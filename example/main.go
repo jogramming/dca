@@ -1,15 +1,16 @@
 package main
 
 import (
-	"encoding/binary"
+	"bytes"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
+	"log"
 	"os/exec"
 	"runtime"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/jonas747/dca"
 )
 
 var (
@@ -20,40 +21,40 @@ func main() {
 
 	// NOTE: All of the below fields are required for this example to work correctly.
 	var (
-		Email     = flag.String("e", "", "Discord account email.")
-		Password  = flag.String("p", "", "Discord account password.")
-		GuildID   = flag.String("g", "", "Guild ID")
-		ChannelID = flag.String("c", "", "Channel ID")
-		Folder    = flag.String("f", "", "Folder of files to play.")
+		Token     = flag.String("t", "", "Discord token.")
+		GuildID   = flag.String("g", "183362174188650497", "Guild ID")
+		ChannelID = flag.String("c", "183362174188650498", "Channel ID")
+		Folder    = flag.String("f", "sounds", "Folder of files to play.")
 		err       error
 	)
 	flag.Parse()
 
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	// Connect to Discord
-	discord, err := discordgo.New(*Email, *Password)
+	discord, err := discordgo.New(*Token)
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatal(err)
 	}
+	discord.LogLevel = discordgo.LogInformational
 
 	// Open Websocket
 	err = discord.Open()
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatal(err)
 	}
 
 	// Connect to voice channel.
 	// NOTE: Setting mute to false, deaf to true.
-	err = discord.ChannelVoiceJoin(*GuildID, *ChannelID, false, true)
+	voice, err := discord.ChannelVoiceJoin(*GuildID, *ChannelID, false, true)
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatal(err)
 	}
+	voice.LogLevel = discordgo.LogInformational
 
 	// Hacky loop to prevent sending on a nil channel.
 	// TODO: Find a better way.
-	for discord.Voice.Ready == false {
+	for voice.Ready == false {
 		runtime.Gosched()
 	}
 
@@ -63,11 +64,10 @@ func main() {
 	for _, f := range files {
 		fmt.Println("PlayAudioFile:", f.Name())
 		discord.UpdateStatus(0, f.Name())
-		PlayAudioFile(discord.Voice, fmt.Sprintf("%s/%s", *Folder, f.Name()))
+		PlayAudioFile(voice, fmt.Sprintf("%s/%s", *Folder, f.Name()))
 	}
-
 	// Close connections
-	discord.Voice.Close()
+	voice.Close()
 	discord.Close()
 
 	return
@@ -76,56 +76,41 @@ func main() {
 // PlayAudioFile will play the given filename to the already connected
 // Discord voice server/channel.  voice websocket and udp socket
 // must already be setup before this will work.
-func PlayAudioFile(v *discordgo.Voice, filename string) {
+func PlayAudioFile(v *discordgo.VoiceConnection, filename string) {
 
-	// Create a shell command "object" to run.
-	run = exec.Command("dca", filename)
-	stdout, err := run.StdoutPipe()
-	if err != nil {
-		fmt.Println("StdoutPipe Error:", err)
-		return
-	}
-
-	// Starts the dca command
-	err = run.Start()
-	if err != nil {
-		fmt.Println("RunStart Error:", err)
-		return
-	}
-
-	// header "buffer"
-	var opuslen uint16
+	encodeSession := dca.EncodeFile(filename, nil)
 
 	// Send "speaking" packet over the voice websocket
-	v.Speaking(true)
+	err := v.Speaking(true)
+	if err != nil {
+		log.Fatal("Failed setting speaking", err)
+	}
 
 	// Send not "speaking" packet over the websocket when we finish
 	defer v.Speaking(false)
 
 	for {
-
-		// read "header" from dca
-		err = binary.Read(stdout, binary.LittleEndian, &opuslen)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			return
-		}
+		frame, err := encodeSession.ReadFrame()
 		if err != nil {
-			fmt.Println("error reading from dca stdout :", err)
-			return
+			break
 		}
 
-		// read opus data from dca
-		opus := make([]byte, opuslen)
-		err = binary.Read(stdout, binary.LittleEndian, &opus)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			return
-		}
+		audio, err := dca.DecodeFrame(bytes.NewBuffer(frame))
 		if err != nil {
-			fmt.Println("error reading from dca stdout :", err)
-			return
+			break
 		}
 
-		// Send received PCM to the sendPCM channel
-		v.OpusSend <- opus
+		v.OpusSend <- audio
+	}
+
+	// Empty the shizzazz
+	if encodeSession.Running() {
+		encodeSession.Stop()
+		for {
+			_, err = encodeSession.ReadFrame()
+			if err != nil {
+				break
+			}
+		}
 	}
 }

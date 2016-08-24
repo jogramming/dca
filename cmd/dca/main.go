@@ -1,22 +1,19 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/jonas747/dca"
 	"image/jpeg"
 	"image/png"
-	"io"
 	"os"
 	"os/exec"
 	"strconv"
 	"sync"
-
-	"github.com/layeh/gopus"
+	"time"
 )
 
 // Define constants
@@ -40,8 +37,8 @@ var (
 	CoverImage string
 
 	// Metadata structures
-	Metadata    MetadataStruct
-	FFprobeData FFprobeMetadata
+	Metadata    dca.MetadataStruct
+	FFprobeData dca.FFprobeMetadata
 
 	// Magic bytes to write at the start of a DCA file
 	MagicBytes string = fmt.Sprintf("DCA%d", FormatVersion)
@@ -65,21 +62,16 @@ var (
 	// if true, dca sends raw output without any magic bytes or json metadata
 	RawOutput bool
 
-	FrameSize int // uint16 size of each audio frame
-	MaxBytes  int // max size of opus data
+	FrameDuration int // uint16 size of each audio frame
 
 	Volume int // change audio volume (256=normal)
 
-	OpusEncoder *gopus.Encoder
+	//OpusEncoder *gopus.Encoder
 
 	InFile      string
 	CoverFormat string = "jpeg"
 
 	OutFile string = "pipe:1"
-	OutBuf  []byte
-
-	EncodeChan chan []int16
-	OutputChan chan []byte
 
 	err error
 
@@ -93,8 +85,8 @@ func init() {
 	flag.IntVar(&Volume, "vol", 256, "change audio volume (256=normal)")
 	flag.IntVar(&Channels, "ac", 2, "audio channels")
 	flag.IntVar(&FrameRate, "ar", 48000, "audio sampling rate")
-	flag.IntVar(&FrameSize, "as", 960, "audio frame size can be 960 (20ms), 1920 (40ms), or 2880 (60ms)")
-	flag.IntVar(&Bitrate, "ab", 64, "audio encoding bitrate in kb/s can be 8 - 128")
+	flag.IntVar(&FrameDuration, "as", 20, "audio frame duration can be 20, 40, or 60 (ms)")
+	flag.IntVar(&Bitrate, "ab", 128, "audio encoding bitrate in kb/s can be 8 - 128")
 	flag.BoolVar(&RawOutput, "raw", false, "Raw opus output (no metadata or magic bytes)")
 	flag.StringVar(&Application, "aa", "audio", "audio application can be voip, audio, or lowdelay")
 	flag.StringVar(&CoverFormat, "cf", "jpeg", "format the cover art will be encoded with")
@@ -105,8 +97,6 @@ func init() {
 	}
 
 	flag.Parse()
-
-	MaxBytes = (FrameSize * Channels) * 2 // max size of opus data
 }
 
 // very simple program that wraps ffmpeg and outputs raw opus data frames
@@ -152,57 +142,32 @@ func main() {
 	// BLOCK : Create chans, buffers, and encoder for use
 	//////////////////////////////////////////////////////////////////////////
 
-	// create an opusEncoder to use
-	OpusEncoder, err = gopus.NewEncoder(FrameRate, Channels, gopus.Audio)
-	if err != nil {
-		fmt.Println("NewEncoder Error:", err)
-		return
-	}
-
-	// set opus encoding options
-	//	OpusEncoder.SetVbr(true)                // bool
-
 	if Bitrate < 1 || Bitrate > 512 {
 		Bitrate = 64 // Set to Discord default
 	}
-	OpusEncoder.SetBitrate(Bitrate * 1000)
-
-	switch Application {
-	case "voip":
-		OpusEncoder.SetApplication(gopus.Voip)
-	case "audio":
-		OpusEncoder.SetApplication(gopus.Audio)
-	case "lowdelay":
-		OpusEncoder.SetApplication(gopus.RestrictedLowDelay)
-	default:
-		OpusEncoder.SetApplication(gopus.Audio)
-	}
-
-	OutputChan = make(chan []byte, 10)
-	EncodeChan = make(chan []int16, 10)
 
 	if RawOutput == false {
 		// Setup the metadata
-		Metadata = MetadataStruct{
-			Dca: &DCAMetadata{
+		Metadata = dca.MetadataStruct{
+			Dca: &dca.DCAMetadata{
 				Version: FormatVersion,
-				Tool: &DCAToolMetadata{
+				Tool: &dca.DCAToolMetadata{
 					Name:    "dca",
 					Version: ProgramVersion,
 					Url:     GitHubRepositoryURL,
 					Author:  "bwmarrin",
 				},
 			},
-			SongInfo: &SongMetadata{},
-			Origin:   &OriginMetadata{},
-			Opus: &OpusMetadata{
+			SongInfo: &dca.SongMetadata{},
+			Origin:   &dca.OriginMetadata{},
+			Opus: &dca.OpusMetadata{
 				Bitrate:     Bitrate * 1000,
 				SampleRate:  FrameRate,
 				Application: Application,
-				FrameSize:   FrameSize,
+				FrameSize:   FrameDuration * 48,
 				Channels:    Channels,
 			},
-			Extra: &ExtraMetadata{},
+			Extra: &dca.ExtraMetadata{},
 		}
 		_ = Metadata
 
@@ -222,7 +187,6 @@ func main() {
 				fmt.Println("FFprobe Error:", err)
 				return
 			}
-
 			err = json.Unmarshal(CmdBuf.Bytes(), &FFprobeData)
 			if err != nil {
 				fmt.Println("Erorr unmarshaling the FFprobe JSON:", err)
@@ -235,7 +199,11 @@ func main() {
 				return
 			}
 
-			Metadata.SongInfo = &SongMetadata{
+			if FFprobeData.Format.Tags == nil {
+				FFprobeData.Format.Tags = &dca.FFprobeTags{}
+			}
+
+			Metadata.SongInfo = &dca.SongMetadata{
 				Title:    FFprobeData.Format.Tags.Title,
 				Artist:   FFprobeData.Format.Tags.Artist,
 				Album:    FFprobeData.Format.Tags.Album,
@@ -243,7 +211,7 @@ func main() {
 				Comments: "", // change later?
 			}
 
-			Metadata.Origin = &OriginMetadata{
+			Metadata.Origin = &dca.OriginMetadata{
 				Source:   "file",
 				Bitrate:  bitrateInt,
 				Channels: Channels,
@@ -284,7 +252,7 @@ func main() {
 			CmdBuf.Reset()
 			PngBuf.Reset()
 		} else {
-			Metadata.Origin = &OriginMetadata{
+			Metadata.Origin = &dca.OriginMetadata{
 				Source:   "pipe",
 				Channels: Channels,
 				Encoding: "pcm16/s16le",
@@ -296,173 +264,36 @@ func main() {
 	// BLOCK : Start reader and writer workers
 	//////////////////////////////////////////////////////////////////////////
 
-	wg.Add(1)
-	go reader()
-
-	wg.Add(1)
-	go encoder()
-
-	wg.Add(1)
-	go writer()
-
-	// wait for above goroutines to finish, then exit.
-	wg.Wait()
-}
-
-// reader reads from the input
-func reader() {
-
-	defer func() {
-		close(EncodeChan)
-		wg.Done()
-	}()
-
-	// read from file
-	if InFile != "pipe:0" {
-
-		// Create a shell command "object" to run.
-		ffmpeg := exec.Command("ffmpeg", "-i", InFile, "-vol", strconv.Itoa(Volume), "-f", "s16le", "-ar", strconv.Itoa(FrameRate), "-ac", strconv.Itoa(Channels), "pipe:1")
-		stdout, err := ffmpeg.StdoutPipe()
-		if err != nil {
-			fmt.Println("StdoutPipe Error:", err)
-			return
-		}
-
-		// Starts the ffmpeg command
-		err = ffmpeg.Start()
-		if err != nil {
-			fmt.Println("RunStart Error:", err)
-			return
-		}
-
-		for {
-
-			// read data from ffmpeg stdout
-			InBuf := make([]int16, FrameSize*Channels)
-			err = binary.Read(stdout, binary.LittleEndian, &InBuf)
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
-				return
-			}
-			if err != nil {
-				fmt.Println("error reading from ffmpeg stdout :", err)
-				return
-			}
-
-			// write pcm data to the EncodeChan
-			EncodeChan <- InBuf
-
-		}
+	var session dca.EncodeSession
+	options := &dca.EncodeOptions{
+		Volume:        Volume,
+		Channels:      Channels,
+		FrameRate:     FrameRate,
+		FrameDuration: FrameDuration,
+		Bitrate:       Bitrate,
+		RawOutput:     RawOutput,
+		Application:   dca.AudioApplication(Application),
+		CoverFormat:   CoverFormat,
 	}
 
-	// read input from stdin pipe
+	var output = os.Stdout
+
 	if InFile == "pipe:0" {
-
-		// 16KB input buffer
-		rbuf := bufio.NewReaderSize(os.Stdin, 16384)
-		for {
-
-			// read data from stdin
-			InBuf := make([]int16, FrameSize*Channels)
-
-			err = binary.Read(rbuf, binary.LittleEndian, &InBuf)
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
-				return
-			}
-			if err != nil {
-				fmt.Println("error reading from ffmpeg stdout :", err)
-				return
-			}
-
-			// write pcm data to the EncodeChan
-			EncodeChan <- InBuf
-		}
-	}
-
-}
-
-// encoder listens on the EncodeChan and encodes provided PCM16 data
-// to opus, then sends the encoded data to the OutputChan
-func encoder() {
-
-	defer func() {
-		close(OutputChan)
-		wg.Done()
-	}()
-
-	for {
-		pcm, ok := <-EncodeChan
-		if !ok {
-			// if chan closed, exit
-			return
-		}
-
-		// try encoding pcm frame with Opus
-		opus, err := OpusEncoder.Encode(pcm, FrameSize, MaxBytes)
-		if err != nil {
-			fmt.Println("Encoding Error:", err)
-			return
-		}
-
-		// write opus data to OutputChan
-		OutputChan <- opus
-	}
-}
-
-// writer listens on the OutputChan and writes the output to stdout pipe
-// TODO: Add support for writing directly to a file
-func writer() {
-
-	defer wg.Done()
-
-	var opuslen int16
-	var jsonlen int32
-
-	// 16KB output buffer
-	wbuf := bufio.NewWriterSize(os.Stdout, 16384)
-	defer wbuf.Flush()
-
-	if RawOutput == false {
-		// write the magic bytes
-		fmt.Print(MagicBytes)
-
-		// encode and write json length
-		json, err := json.Marshal(Metadata)
-		if err != nil {
-			fmt.Println("Failed to encode the Metadata JSON:", err)
-			return
-		}
-
-		jsonlen = int32(len(json))
-		err = binary.Write(wbuf, binary.LittleEndian, &jsonlen)
-		if err != nil {
-			fmt.Println("error writing output: ", err)
-			return
-		}
-
-		// write the actual json
-		wbuf.Write(json)
+		session = dca.EncodeMem(os.Stdin, options)
+	} else {
+		session = dca.EncodeFile(InFile, options)
 	}
 
 	for {
-		opus, ok := <-OutputChan
-		if !ok {
-			// if chan closed, exit
-			return
-		}
-
-		// write header
-		opuslen = int16(len(opus))
-		err = binary.Write(wbuf, binary.LittleEndian, &opuslen)
+		frame, err := session.ReadFrame()
 		if err != nil {
-			fmt.Println("error writing output: ", err)
-			return
+			fmt.Fprintln(os.Stderr, "Error reading frame", err)
+			break
 		}
-
-		// write opus data to stdout
-		err = binary.Write(wbuf, binary.LittleEndian, &opus)
+		_, err = output.Write(frame)
 		if err != nil {
-			fmt.Println("error writing output: ", err)
-			return
+			fmt.Fprintln(os.Stderr, "Error writing frame", err)
+			break
 		}
 	}
 }
