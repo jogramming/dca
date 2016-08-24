@@ -2,8 +2,13 @@ package dca
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"os"
 	"os/exec"
@@ -143,6 +148,10 @@ func (e *encodeSession) run() {
 		return
 	}
 
+	if !e.options.RawOutput {
+		e.writeMetadataFrame()
+	}
+
 	// Starts the ffmpeg command
 	err = ffmpeg.Start()
 	if err != nil {
@@ -166,6 +175,144 @@ func (e *encodeSession) run() {
 	if err != nil {
 		Logln("Error waiting for ffmpeg:", err)
 	}
+}
+
+func (e *encodeSession) writeMetadataFrame() {
+	// Setup the metadata
+	metadata := MetadataStruct{
+		Dca: &DCAMetadata{
+			Version: FormatVersion,
+			Tool: &DCAToolMetadata{
+				Name:    "dca",
+				Version: LibraryVersion,
+				Url:     GitHubRepositoryURL,
+				Author:  "bwmarrin",
+			},
+		},
+		SongInfo: &SongMetadata{},
+		Origin:   &OriginMetadata{},
+		Opus: &OpusMetadata{
+			Bitrate:     e.options.Bitrate * 1000,
+			SampleRate:  e.options.FrameRate,
+			Application: string(e.options.Application),
+			FrameSize:   e.options.FrameDuration * (e.options.FrameRate / 1000),
+			Channels:    e.options.Channels,
+		},
+		Extra: &ExtraMetadata{},
+	}
+	var cmdBuf bytes.Buffer
+	// get ffprobe data
+	if e.pipeReader == nil {
+		ffprobe := exec.Command("ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", e.filePath)
+		ffprobe.Stdout = &cmdBuf
+
+		err := ffprobe.Start()
+		if err != nil {
+			Logln("RunStart Error:", err)
+			return
+		}
+
+		err = ffprobe.Wait()
+		if err != nil {
+			Logln("FFprobe Error:", err)
+			return
+		}
+		var ffprobeData *FFprobeMetadata
+		err = json.Unmarshal(cmdBuf.Bytes(), &ffprobeData)
+		if err != nil {
+			Logln("Erorr unmarshaling the FFprobe JSON:", err)
+			return
+		}
+
+		if ffprobeData.Format == nil {
+			ffprobeData.Format = &FFprobeFormat{}
+		}
+
+		if ffprobeData.Format.Tags == nil {
+			ffprobeData.Format.Tags = &FFprobeTags{}
+		}
+
+		bitrateInt, err := strconv.Atoi(ffprobeData.Format.Bitrate)
+		if err != nil {
+			Logln("Could not convert bitrate to int:", err)
+			return
+		}
+
+		metadata.SongInfo = &SongMetadata{
+			Title:    ffprobeData.Format.Tags.Title,
+			Artist:   ffprobeData.Format.Tags.Artist,
+			Album:    ffprobeData.Format.Tags.Album,
+			Genre:    ffprobeData.Format.Tags.Genre,
+			Comments: "", // change later?
+		}
+
+		metadata.Origin = &OriginMetadata{
+			Source:   "file",
+			Bitrate:  bitrateInt,
+			Channels: e.options.Channels,
+			Encoding: ffprobeData.Format.FormatLongName,
+		}
+
+		cmdBuf.Reset()
+
+		// get cover art
+		cover := exec.Command("ffmpeg", "-loglevel", "0", "-i", e.filePath, "-f", "singlejpeg", "pipe:1")
+		cover.Stdout = &cmdBuf
+
+		err = cover.Start()
+		if err != nil {
+			Logln("RunStart Error:", err)
+			return
+		}
+		var pngBuf bytes.Buffer
+		err = cover.Wait()
+		if err == nil {
+			buf := bytes.NewBufferString(cmdBuf.String())
+			var coverImage string
+			if e.options.CoverFormat == "png" {
+				img, err := jpeg.Decode(buf)
+				if err == nil { // silently drop it, no image
+					err = png.Encode(&pngBuf, img)
+					if err == nil {
+						coverImage = base64.StdEncoding.EncodeToString(pngBuf.Bytes())
+					}
+				}
+			} else {
+				coverImage = base64.StdEncoding.EncodeToString(cmdBuf.Bytes())
+			}
+
+			metadata.SongInfo.Cover = &coverImage
+		}
+
+		cmdBuf.Reset()
+		pngBuf.Reset()
+	} else {
+		metadata.Origin = &OriginMetadata{
+			Source:   "pipe",
+			Channels: e.options.Channels,
+			Encoding: "pcm16/s16le",
+		}
+	}
+
+	// Write the magic header
+	jsonData, err := json.Marshal(metadata)
+	if err != nil {
+		Logln("JSon error:", err)
+		return
+	}
+	var buf bytes.Buffer
+	buf.Write([]byte(fmt.Sprintf("DCA%d", FormatVersion)))
+
+	// Write the actual json data and length
+	jsonLen := int32(len(jsonData))
+	err = binary.Write(&buf, binary.LittleEndian, &jsonLen)
+	if err != nil {
+		Logln("Couldn't write json len:", err)
+		return
+	}
+
+	buf.Write(jsonData)
+	e.frameChannel <- buf.Bytes()
 }
 
 // Writes to the pipe of ffmpeg

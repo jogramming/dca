@@ -1,47 +1,15 @@
 package main
 
 import (
-	"bytes"
-	"encoding/base64"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/jonas747/dca"
-	"image/jpeg"
-	"image/png"
 	"os"
-	"os/exec"
-	"strconv"
-	"sync"
-	"time"
-)
-
-// Define constants
-const (
-	// The current version of the DCA format
-	FormatVersion int8 = 1
-
-	// The current version of the DCA program
-	ProgramVersion string = "0.0.1"
-
-	// The URL to the GitHub repository of DCA
-	GitHubRepositoryURL string = "https://github.com/bwmarrin/dca"
 )
 
 // All global variables used within the program
 var (
-	// Buffer for some commands
-	CmdBuf bytes.Buffer
-	PngBuf bytes.Buffer
-
-	CoverImage string
-
-	// Metadata structures
-	Metadata    dca.MetadataStruct
-	FFprobeData dca.FFprobeMetadata
-
 	// Magic bytes to write at the start of a DCA file
-	MagicBytes string = fmt.Sprintf("DCA%d", FormatVersion)
 
 	// 1 for mono, 2 for stereo
 	Channels int
@@ -74,8 +42,6 @@ var (
 	OutFile string = "pipe:1"
 
 	err error
-
-	wg sync.WaitGroup
 )
 
 // init configures and parses the command line arguments
@@ -144,120 +110,6 @@ func main() {
 
 	if Bitrate < 1 || Bitrate > 512 {
 		Bitrate = 64 // Set to Discord default
-	}
-
-	if RawOutput == false {
-		// Setup the metadata
-		Metadata = dca.MetadataStruct{
-			Dca: &dca.DCAMetadata{
-				Version: FormatVersion,
-				Tool: &dca.DCAToolMetadata{
-					Name:    "dca",
-					Version: ProgramVersion,
-					Url:     GitHubRepositoryURL,
-					Author:  "bwmarrin",
-				},
-			},
-			SongInfo: &dca.SongMetadata{},
-			Origin:   &dca.OriginMetadata{},
-			Opus: &dca.OpusMetadata{
-				Bitrate:     Bitrate * 1000,
-				SampleRate:  FrameRate,
-				Application: Application,
-				FrameSize:   FrameDuration * 48,
-				Channels:    Channels,
-			},
-			Extra: &dca.ExtraMetadata{},
-		}
-		_ = Metadata
-
-		// get ffprobe data
-		if InFile != "pipe:0" {
-			ffprobe := exec.Command("ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", InFile)
-			ffprobe.Stdout = &CmdBuf
-
-			err = ffprobe.Start()
-			if err != nil {
-				fmt.Println("RunStart Error:", err)
-				return
-			}
-
-			err = ffprobe.Wait()
-			if err != nil {
-				fmt.Println("FFprobe Error:", err)
-				return
-			}
-			err = json.Unmarshal(CmdBuf.Bytes(), &FFprobeData)
-			if err != nil {
-				fmt.Println("Erorr unmarshaling the FFprobe JSON:", err)
-				return
-			}
-
-			bitrateInt, err := strconv.Atoi(FFprobeData.Format.Bitrate)
-			if err != nil {
-				fmt.Println("Could not convert bitrate to int:", err)
-				return
-			}
-
-			if FFprobeData.Format.Tags == nil {
-				FFprobeData.Format.Tags = &dca.FFprobeTags{}
-			}
-
-			Metadata.SongInfo = &dca.SongMetadata{
-				Title:    FFprobeData.Format.Tags.Title,
-				Artist:   FFprobeData.Format.Tags.Artist,
-				Album:    FFprobeData.Format.Tags.Album,
-				Genre:    FFprobeData.Format.Tags.Genre,
-				Comments: "", // change later?
-			}
-
-			Metadata.Origin = &dca.OriginMetadata{
-				Source:   "file",
-				Bitrate:  bitrateInt,
-				Channels: Channels,
-				Encoding: FFprobeData.Format.FormatLongName,
-			}
-
-			CmdBuf.Reset()
-
-			// get cover art
-			cover := exec.Command("ffmpeg", "-loglevel", "0", "-i", InFile, "-f", "singlejpeg", "pipe:1")
-			cover.Stdout = &CmdBuf
-
-			err = cover.Start()
-			if err != nil {
-				fmt.Println("RunStart Error:", err)
-				return
-			}
-
-			err = cover.Wait()
-			if err == nil {
-				buf := bytes.NewBufferString(CmdBuf.String())
-
-				if CoverFormat == "png" {
-					img, err := jpeg.Decode(buf)
-					if err == nil { // silently drop it, no image
-						err = png.Encode(&PngBuf, img)
-						if err == nil {
-							CoverImage = base64.StdEncoding.EncodeToString(PngBuf.Bytes())
-						}
-					}
-				} else {
-					CoverImage = base64.StdEncoding.EncodeToString(CmdBuf.Bytes())
-				}
-
-				Metadata.SongInfo.Cover = &CoverImage
-			}
-
-			CmdBuf.Reset()
-			PngBuf.Reset()
-		} else {
-			Metadata.Origin = &dca.OriginMetadata{
-				Source:   "pipe",
-				Channels: Channels,
-				Encoding: "pcm16/s16le",
-			}
-		}
 	}
 
 	//////////////////////////////////////////////////////////////////////////
