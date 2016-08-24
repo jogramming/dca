@@ -69,7 +69,6 @@ var StdEncodeOptions = &EncodeOptions{
 // EncodeSession is an encoding session
 type EncodeSession interface {
 	Stop() error                          // Stops the encoding session
-	Progress() time.Duration              // Returns the number of seconds that has elapsed
 	ReadFrame() (frame []byte, err error) // Retrieves a frame
 	Running() bool                        // Wether its encoding or not
 }
@@ -179,7 +178,7 @@ func (e *encodeSession) run() {
 
 func (e *encodeSession) writeMetadataFrame() {
 	// Setup the metadata
-	metadata := MetadataStruct{
+	metadata := Metadata{
 		Dca: &DCAMetadata{
 			Version: FormatVersion,
 			Tool: &DCAToolMetadata{
@@ -379,15 +378,8 @@ func (e *encodeSession) Stop() error {
 	return err
 }
 
-// Progress returns the duration of wich the encodesession has been running
-func (e *encodeSession) Progress() time.Duration {
-	e.Lock()
-	elapsed := time.Since(e.started)
-	e.Unlock()
-	return elapsed
-}
-
 // ReadFrame blocks untill a frame is read or there are no more frames
+// Note: If rawoutput is not set, the first frame will be a metadata frame
 func (e *encodeSession) ReadFrame() (frame []byte, err error) {
 	frame = <-e.frameChannel
 	if frame == nil {

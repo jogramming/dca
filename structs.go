@@ -3,7 +3,7 @@ package dca
 // Base metadata struct
 //
 // https://github.com/bwmarrin/dca/issues/5#issuecomment-189713886
-type MetadataStruct struct {
+type Metadata struct {
 	Dca      *DCAMetadata    `json:"dca"`
 	SongInfo *SongMetadata   `json:"info"`
 	Origin   *OriginMetadata `json:"origin"`
