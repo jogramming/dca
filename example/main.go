@@ -99,20 +99,9 @@ func PlayAudioFile(v *discordgo.VoiceConnection, filename string) {
 
 		audio, err := dca.DecodeFrame(bytes.NewBuffer(frame))
 		if err != nil {
-			break
+			continue // Make sure we read all he frames, otherwise theres a leak!
 		}
 
 		v.OpusSend <- audio
-	}
-
-	// Empty the shizzazz
-	if encodeSession.Running() {
-		encodeSession.Stop()
-		for {
-			_, err = encodeSession.ReadFrame()
-			if err != nil {
-				break
-			}
-		}
 	}
 }
