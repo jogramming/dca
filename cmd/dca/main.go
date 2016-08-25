@@ -136,10 +136,10 @@ func main() {
 		session = dca.EncodeFile(InFile, options)
 	}
 
+	framecounter := 0
 	for {
 		frame, err := session.ReadFrame()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error reading frame", err)
 			break
 		}
 		_, err = output.Write(frame)
@@ -147,5 +147,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "Error writing frame", err)
 			break
 		}
+		framecounter++
 	}
+	fmt.Fprintf(os.Stderr, "Finished encoding, wrote %d frames\n", framecounter)
 }

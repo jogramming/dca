@@ -63,7 +63,6 @@ var StdEncodeOptions = &EncodeOptions{
 	FrameDuration: 20,
 	Bitrate:       64,
 	Application:   AudioApplicationAudio,
-	RawOutput:     true,
 }
 
 // EncodeSession is an encoding session
@@ -130,8 +129,6 @@ func (e *encodeSession) run() {
 	// Launch ffmpeg with a variety of different fruits and goodies mixed togheter
 	ffmpeg := exec.Command("ffmpeg", "-i", inFile, "-map", "0:a", "-acodec", "libopus", "-f", "data", "-sample_fmt", "s16", "-vbr", "off", "-compression_level", "10",
 		"-vol", strconv.Itoa(e.options.Volume), "-ar", strconv.Itoa(e.options.FrameRate), "-ac", strconv.Itoa(e.options.Channels), "-b:a", strconv.Itoa(e.options.Bitrate*1000), "pipe:1")
-
-	Logln(ffmpeg.Args)
 
 	stdIn, err := ffmpeg.StdinPipe()
 	if err != nil {

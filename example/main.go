@@ -77,8 +77,10 @@ func main() {
 // Discord voice server/channel.  voice websocket and udp socket
 // must already be setup before this will work.
 func PlayAudioFile(v *discordgo.VoiceConnection, filename string) {
+	opts := dca.StdEncodeOptions
+	opts.RawOutput = true
 
-	encodeSession := dca.EncodeFile(filename, nil)
+	encodeSession := dca.EncodeFile(filename, opts)
 
 	// Send "speaking" packet over the voice websocket
 	err := v.Speaking(true)
