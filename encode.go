@@ -32,14 +32,15 @@ var (
 
 // EncodeOptions is a set of options for encoding dca
 type EncodeOptions struct {
-	Volume        int              // change audio volume (256=normal)
-	Channels      int              // audio channels
-	FrameRate     int              // audio sampling rate (ex 48000)
-	FrameDuration int              // audio frame duration can be 20, 40, or 60 (ms)
-	Bitrate       int              // audio encoding bitrate in kb/s can be 8 - 128
-	RawOutput     bool             // Raw opus output (no metadata or magic bytes)
-	Application   AudioApplication // Audio application
-	CoverFormat   string           // Format the cover art will be encoded with (ex "jpeg)
+	Volume           int              // change audio volume (256=normal)
+	Channels         int              // audio channels
+	FrameRate        int              // audio sampling rate (ex 48000)
+	FrameDuration    int              // audio frame duration can be 20, 40, or 60 (ms)
+	Bitrate          int              // audio encoding bitrate in kb/s can be 8 - 128
+	RawOutput        bool             // Raw opus output (no metadata or magic bytes)
+	Application      AudioApplication // Audio application
+	CoverFormat      string           // Format the cover art will be encoded with (ex "jpeg)
+	CompressionLevel int              // Compression level, higher is better qualiy but slower encoding (0 - 10)
 }
 
 // Validate returns an error if the options are not correct
@@ -57,12 +58,13 @@ func (opts *EncodeOptions) Validate() error {
 
 // StdEncodeOptions is the standard options for encoding
 var StdEncodeOptions = &EncodeOptions{
-	Volume:        256,
-	Channels:      2,
-	FrameRate:     48000,
-	FrameDuration: 20,
-	Bitrate:       64,
-	Application:   AudioApplicationAudio,
+	Volume:           256,
+	Channels:         2,
+	FrameRate:        48000,
+	FrameDuration:    20,
+	Bitrate:          64,
+	Application:      AudioApplicationAudio,
+	CompressionLevel: 10,
 }
 
 // EncodeSession is an encoding session
@@ -127,8 +129,11 @@ func (e *encodeSession) run() {
 	}
 
 	// Launch ffmpeg with a variety of different fruits and goodies mixed togheter
-	ffmpeg := exec.Command("ffmpeg", "-i", inFile, "-map", "0:a", "-acodec", "libopus", "-f", "data", "-sample_fmt", "s16", "-vbr", "off", "-compression_level", "10",
-		"-vol", strconv.Itoa(e.options.Volume), "-ar", strconv.Itoa(e.options.FrameRate), "-ac", strconv.Itoa(e.options.Channels), "-b:a", strconv.Itoa(e.options.Bitrate*1000), "pipe:1")
+	ffmpeg := exec.Command("ffmpeg", "-i", inFile, "-map", "0:a", "-acodec", "libopus", "-f", "data", "-sample_fmt", "s16", "-vbr", "off",
+		"-compression_level", strconv.Itoa(e.options.CompressionLevel), "-vol", strconv.Itoa(e.options.Volume), "-ar", strconv.Itoa(e.options.FrameRate),
+		"-ac", strconv.Itoa(e.options.Channels), "-b:a", strconv.Itoa(e.options.Bitrate*1000), "-application", string(e.options.Application), "-frame_duration", strconv.Itoa(e.options.FrameDuration), "pipe:1")
+
+	// Logln(ffmpeg.Args)
 
 	stdIn, err := ffmpeg.StdinPipe()
 	if err != nil {
