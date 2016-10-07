@@ -12,10 +12,10 @@ const (
 	FormatVersion int8 = 1
 
 	// The current version of the DCA program
-	LibraryVersion string = "0.0.1"
+	LibraryVersion string = "0.0.2"
 
 	// The URL to the GitHub repository of DCA
-	GitHubRepositoryURL string = "https://github.com/bwmarrin/dca"
+	GitHubRepositoryURL string = "https://github.com/jonas747/dca"
 )
 
 var Logger *log.Logger

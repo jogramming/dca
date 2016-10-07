@@ -10,6 +10,7 @@ import (
 	"log"
 	"os/exec"
 	"runtime"
+	"time"
 )
 
 var (
@@ -26,6 +27,7 @@ func main() {
 		Folder    = flag.String("f", "sounds", "Folder of files to play.")
 		err       error
 	)
+
 	flag.Parse()
 
 	if *GuildID == "" {
@@ -48,7 +50,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	discord.LogLevel = discordgo.LogInformational
 
 	// Open Websocket
 	err = discord.Open()
@@ -62,7 +63,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	voice.LogLevel = discordgo.LogInformational
 
 	// Hacky loop to prevent sending on a nil channel.
 	// TODO: Find a better way.
@@ -104,6 +104,11 @@ func PlayAudioFile(v *discordgo.VoiceConnection, filename string) {
 	// Send not "speaking" packet over the websocket when we finish
 	defer v.Speaking(false)
 
+	// Number of frames we've sent to discord,
+	// if we multiply this by frameduration
+	// we get how far into playback we are
+	framesSent := 0
+
 	for {
 		frame, err := encodeSession.ReadFrame()
 		if err != nil {
@@ -114,7 +119,12 @@ func PlayAudioFile(v *discordgo.VoiceConnection, filename string) {
 		if err != nil {
 			continue // Make sure we read all he frames, otherwise theres a leak!
 		}
+		framesSent++
 
 		v.OpusSend <- audio
+
+		stats := encodeSession.Stats()
+		playbackPosition := time.Duration(framesSent*opts.FrameDuration) * time.Millisecond
+		fmt.Printf("Playback: %-10s, Transcode Stats: Time: %5s, Size: %5dkB, Bitrate: %6.2fkB, Speed: %5.1fx\r", playbackPosition, stats.Duration.String(), stats.Size, stats.Bitrate, stats.Speed)
 	}
 }

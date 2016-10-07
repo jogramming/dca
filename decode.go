@@ -67,7 +67,8 @@ func (d *Decoder) ReadMetadata() error {
 	return err
 }
 
-// OpusFrame returns the next audio frame (without the prefixed length)
+// OpusFrame returns the next audio frame
+// (without the prefixed length, can be sent to discord as-is)
 func (d *Decoder) OpusFrame() (frame []byte, err error) {
 	frame, err = DecodeFrame(d.r)
 	return

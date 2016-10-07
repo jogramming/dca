@@ -1,6 +1,7 @@
 package dca
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -42,12 +44,13 @@ type EncodeOptions struct {
 	Application      AudioApplication // Audio application
 	CoverFormat      string           // Format the cover art will be encoded with (ex "jpeg)
 	CompressionLevel int              // Compression level, higher is better qualiy but slower encoding (0 - 10)
+	BufferedFrames   int              // How big the frame buffer should be
 }
 
 // Validate returns an error if the options are not correct
 func (opts *EncodeOptions) Validate() error {
-	if opts.Volume < 0 || opts.Volume > 256 {
-		return errors.New("Out of bounds volume (0-256)")
+	if opts.Volume < 0 || opts.Volume > 512 {
+		return errors.New("Out of bounds volume (0-512)")
 	}
 
 	if opts.FrameDuration != 20 && opts.FrameDuration != 40 && opts.FrameDuration != 60 {
@@ -66,6 +69,7 @@ var StdEncodeOptions = &EncodeOptions{
 	Bitrate:          64,
 	Application:      AudioApplicationAudio,
 	CompressionLevel: 10,
+	BufferedFrames:   100, // At 20ms frames thats 2s
 }
 
 // EncodeSession is an encoding session
@@ -73,6 +77,19 @@ type EncodeSession interface {
 	Stop() error                          // Stops the encoding session
 	ReadFrame() (frame []byte, err error) // Retrieves a frame
 	Running() bool                        // Wether its encoding or not
+
+	// Returns ffmpeg stats, NOTE: this is not say the current position in playback
+	// but instead how much ffmpeg has transcoded, to get how far into playback you are
+	// you have to track the number of frames sent to discord youself
+	Stats() *EncodeStats
+}
+
+// EncodeStats is transcode stats reported by ffmpeg
+type EncodeStats struct {
+	Size     int
+	Duration time.Duration
+	Bitrate  float32
+	Speed    float32
 }
 
 type encodeSession struct {
@@ -85,6 +102,9 @@ type encodeSession struct {
 	started      time.Time
 	frameChannel chan []byte
 	process      *os.Process
+	lastStats    *EncodeStats
+
+	lastFrame int
 }
 
 // EncodedMem encodes data from memory
@@ -92,7 +112,7 @@ func EncodeMem(r io.Reader, options *EncodeOptions) (session EncodeSession) {
 	s := &encodeSession{
 		options:      options,
 		pipeReader:   r,
-		frameChannel: make(chan []byte),
+		frameChannel: make(chan []byte, options.BufferedFrames),
 	}
 	go s.run()
 	return s
@@ -103,7 +123,7 @@ func EncodeFile(path string, options *EncodeOptions) (session EncodeSession) {
 	s := &encodeSession{
 		options:      options,
 		filePath:     path,
-		frameChannel: make(chan []byte),
+		frameChannel: make(chan []byte, options.BufferedFrames),
 	}
 	go s.run()
 	return s
@@ -130,7 +150,7 @@ func (e *encodeSession) run() {
 	}
 
 	// Launch ffmpeg with a variety of different fruits and goodies mixed togheter
-	ffmpeg := exec.Command("ffmpeg", "-i", inFile, "-map", "0:a", "-acodec", "libopus", "-f", "ogg", "-sample_fmt", "s16", "-vbr", "on",
+	ffmpeg := exec.Command("ffmpeg", "-stats", "-i", inFile, "-map", "0:a", "-acodec", "libopus", "-f", "ogg", "-sample_fmt", "s16", "-vbr", "on",
 		"-compression_level", strconv.Itoa(e.options.CompressionLevel), "-vol", strconv.Itoa(e.options.Volume), "-ar", strconv.Itoa(e.options.FrameRate),
 		"-ac", strconv.Itoa(e.options.Channels), "-b:a", strconv.Itoa(e.options.Bitrate*1000), "-application", string(e.options.Application), "-frame_duration", strconv.Itoa(e.options.FrameDuration), "pipe:1")
 
@@ -146,6 +166,14 @@ func (e *encodeSession) run() {
 	if err != nil {
 		e.Unlock()
 		logln("StdoutPipe Error:", err)
+		close(e.frameChannel)
+		return
+	}
+
+	stderr, err := ffmpeg.StderrPipe()
+	if err != nil {
+		e.Unlock()
+		logln("StderrPipe Error:", err)
 		close(e.frameChannel)
 		return
 	}
@@ -171,6 +199,8 @@ func (e *encodeSession) run() {
 
 	e.process = ffmpeg.Process
 	e.Unlock()
+
+	go e.readStderr(stderr)
 
 	e.readStdout(stdout)
 	err = ffmpeg.Wait()
@@ -329,6 +359,64 @@ func (e *encodeSession) writeStdin(stdin io.WriteCloser) {
 	}
 }
 
+func (e *encodeSession) readStderr(stderr io.ReadCloser) {
+	bufReader := bufio.NewReader(stderr)
+	outBuf := ""
+	for {
+		r, _, err := bufReader.ReadRune()
+		if err != nil {
+			if err != io.EOF {
+				logln("Error Reading stderr:", err)
+			}
+			break
+		}
+
+		if r == '\n' || r == '\r' {
+			if len(outBuf) > 0 {
+				e.handleStderrLine(outBuf)
+				outBuf = ""
+			}
+		} else {
+			outBuf += string(r)
+		}
+	}
+}
+
+func (e *encodeSession) handleStderrLine(line string) {
+	if strings.Index(line, "size=") != 0 {
+		return // Not stats info
+	}
+
+	var size int
+
+	var timeH int
+	var timeM int
+	var timeS float32
+
+	var bitrate float32
+	var speed float32
+
+	_, err := fmt.Sscanf(line, "size=%dkB time=%d:%d:%f bitrate=%fkbits/s speed=%fx", &size, &timeH, &timeM, &timeS, &bitrate, &speed)
+	if err != nil {
+		logln("Error parsing ffmpeg stats:", err)
+	}
+
+	dur := time.Duration(timeH) * time.Hour
+	dur += time.Duration(timeM) * time.Minute
+	dur += time.Duration(timeS) * time.Second
+
+	stats := &EncodeStats{
+		Size:     size,
+		Duration: dur,
+		Bitrate:  bitrate,
+		Speed:    speed,
+	}
+
+	e.Lock()
+	e.lastStats = stats
+	e.Unlock()
+}
+
 func (e *encodeSession) readStdout(stdout io.ReadCloser) {
 	defer close(e.frameChannel)
 
@@ -388,6 +476,11 @@ func (e *encodeSession) writeOpusFrame(opusFrame []byte) error {
 	}
 
 	e.frameChannel <- dcaBuf.Bytes()
+
+	e.Lock()
+	e.lastFrame++
+	e.Unlock()
+
 	return nil
 }
 
@@ -422,4 +515,15 @@ func (e *encodeSession) Running() (running bool) {
 	running = e.running
 	e.Unlock()
 	return
+}
+
+func (e *encodeSession) Stats() *EncodeStats {
+	s := &EncodeStats{}
+	e.Lock()
+	if e.lastStats != nil {
+		*s = *e.lastStats
+	}
+	e.Unlock()
+
+	return s
 }
