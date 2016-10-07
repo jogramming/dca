@@ -47,7 +47,7 @@ func DecodeFrame(r io.Reader) (frame []byte, err error) {
 	if err != nil {
 		return
 	}
-	logln(size)
+
 	frame = make([]byte, size)
 	err = binary.Read(r, binary.LittleEndian, &frame)
 	return

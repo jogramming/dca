@@ -1,15 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
+	"github.com/bwmarrin/discordgo"
+	"github.com/jonas747/dca"
 	"io/ioutil"
 	"log"
 	"os/exec"
 	"runtime"
-
-	"github.com/bwmarrin/discordgo"
-	"github.com/jonas747/dca"
 )
 
 var (
@@ -110,11 +110,11 @@ func PlayAudioFile(v *discordgo.VoiceConnection, filename string) {
 			break
 		}
 
-		// audio, err := dca.DecodeFrame(bytes.NewBuffer(frame))
-		// if err != nil {
-		// 	continue // Make sure we read all he frames, otherwise theres a leak!
-		// }
+		audio, err := dca.DecodeFrame(bytes.NewBuffer(frame))
+		if err != nil {
+			continue // Make sure we read all he frames, otherwise theres a leak!
+		}
 
-		v.OpusSend <- frame
+		v.OpusSend <- audio
 	}
 }

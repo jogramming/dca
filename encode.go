@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/mccoyst/ogg"
+	"github.com/jonas747/ogg"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -333,7 +333,8 @@ func (e *encodeSession) readStdout(stdout io.ReadCloser) {
 	defer close(e.frameChannel)
 
 	decoder := ogg.NewDecoder(stdout)
-	packetBuf := make([]byte, 0)
+
+	var packetBuf bytes.Buffer
 
 	for {
 		// Retrieve a page
@@ -345,26 +346,49 @@ func (e *encodeSession) readStdout(stdout io.ReadCloser) {
 			break
 		}
 
-		// logln("Packet size:", len(page.Packet))
-		// logf("Page type: %X, serial: %d, granule: %d\n", page.Type, page.Serial, page.Granule)
-
 		// The current position in the page data
 		curPos := 0
 
 		// Read all the opus frames from the segment table
 		for _, seg := range page.SegTbl {
-			l := uint8(seg)
+			packetBuf.Write(page.Packet[curPos : curPos+int(seg)])
+			curPos += int(seg)
 
-			packetBuf = append(packetBuf, page.Packet[curPos:curPos+int(l)]...)
-			curPos += int(l)
-
-			if l < 255 {
-				// logln("OPUS FRAME?", len(packetBuf))
-				e.frameChannel <- packetBuf
-				packetBuf = make([]byte, 0)
+			if seg < 255 && packetBuf.Len() > 0 {
+				// segment length is less than 255, end of packet
+				err = e.writeOpusFrame(packetBuf.Bytes())
+				if err != nil {
+					logln("Error writing opus frame:", err)
+					break
+				}
+				packetBuf.Reset()
 			}
 		}
 	}
+
+	if packetBuf.Len() > 0 {
+		err := e.writeOpusFrame(packetBuf.Bytes())
+		if err != nil {
+			logln("Error writing opus frame:", err)
+		}
+	}
+}
+
+func (e *encodeSession) writeOpusFrame(opusFrame []byte) error {
+	var dcaBuf bytes.Buffer
+
+	err := binary.Write(&dcaBuf, binary.LittleEndian, int16(len(opusFrame)))
+	if err != nil {
+		return err
+	}
+
+	_, err = dcaBuf.Write(opusFrame)
+	if err != nil {
+		return err
+	}
+
+	e.frameChannel <- dcaBuf.Bytes()
+	return nil
 }
 
 // Implement the EncodeSession interface
