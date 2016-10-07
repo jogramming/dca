@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mccoyst/ogg"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -129,22 +130,22 @@ func (e *encodeSession) run() {
 	}
 
 	// Launch ffmpeg with a variety of different fruits and goodies mixed togheter
-	ffmpeg := exec.Command("ffmpeg", "-i", inFile, "-map", "0:a", "-acodec", "libopus", "-f", "data", "-sample_fmt", "s16", "-vbr", "off",
+	ffmpeg := exec.Command("ffmpeg", "-i", inFile, "-map", "0:a", "-acodec", "libopus", "-f", "ogg", "-sample_fmt", "s16", "-vbr", "on",
 		"-compression_level", strconv.Itoa(e.options.CompressionLevel), "-vol", strconv.Itoa(e.options.Volume), "-ar", strconv.Itoa(e.options.FrameRate),
 		"-ac", strconv.Itoa(e.options.Channels), "-b:a", strconv.Itoa(e.options.Bitrate*1000), "-application", string(e.options.Application), "-frame_duration", strconv.Itoa(e.options.FrameDuration), "pipe:1")
 
-	// Logln(ffmpeg.Args)
+	// logln(ffmpeg.Args)
 
 	stdIn, err := ffmpeg.StdinPipe()
 	if err != nil {
 		e.Unlock()
-		Logln("StdinPipe Error:", err)
+		logln("StdinPipe Error:", err)
 	}
 
 	stdout, err := ffmpeg.StdoutPipe()
 	if err != nil {
 		e.Unlock()
-		Logln("StdoutPipe Error:", err)
+		logln("StdoutPipe Error:", err)
 		close(e.frameChannel)
 		return
 	}
@@ -157,7 +158,7 @@ func (e *encodeSession) run() {
 	err = ffmpeg.Start()
 	if err != nil {
 		e.Unlock()
-		Logln("RunStart Error:", err)
+		logln("RunStart Error:", err)
 		close(e.frameChannel)
 		return
 	}
@@ -174,7 +175,7 @@ func (e *encodeSession) run() {
 	e.readStdout(stdout)
 	err = ffmpeg.Wait()
 	if err != nil {
-		Logln("Error waiting for ffmpeg:", err)
+		logln("Error waiting for ffmpeg:", err)
 	}
 }
 
@@ -209,19 +210,19 @@ func (e *encodeSession) writeMetadataFrame() {
 
 		err := ffprobe.Start()
 		if err != nil {
-			Logln("RunStart Error:", err)
+			logln("RunStart Error:", err)
 			return
 		}
 
 		err = ffprobe.Wait()
 		if err != nil {
-			Logln("FFprobe Error:", err)
+			logln("FFprobe Error:", err)
 			return
 		}
 		var ffprobeData *FFprobeMetadata
 		err = json.Unmarshal(cmdBuf.Bytes(), &ffprobeData)
 		if err != nil {
-			Logln("Erorr unmarshaling the FFprobe JSON:", err)
+			logln("Erorr unmarshaling the FFprobe JSON:", err)
 			return
 		}
 
@@ -235,7 +236,7 @@ func (e *encodeSession) writeMetadataFrame() {
 
 		bitrateInt, err := strconv.Atoi(ffprobeData.Format.Bitrate)
 		if err != nil {
-			Logln("Could not convert bitrate to int:", err)
+			logln("Could not convert bitrate to int:", err)
 			return
 		}
 
@@ -262,7 +263,7 @@ func (e *encodeSession) writeMetadataFrame() {
 
 		err = cover.Start()
 		if err != nil {
-			Logln("RunStart Error:", err)
+			logln("RunStart Error:", err)
 			return
 		}
 		var pngBuf bytes.Buffer
@@ -298,7 +299,7 @@ func (e *encodeSession) writeMetadataFrame() {
 	// Write the magic header
 	jsonData, err := json.Marshal(metadata)
 	if err != nil {
-		Logln("JSon error:", err)
+		logln("JSon error:", err)
 		return
 	}
 	var buf bytes.Buffer
@@ -308,7 +309,7 @@ func (e *encodeSession) writeMetadataFrame() {
 	jsonLen := int32(len(jsonData))
 	err = binary.Write(&buf, binary.LittleEndian, &jsonLen)
 	if err != nil {
-		Logln("Couldn't write json len:", err)
+		logln("Couldn't write json len:", err)
 		return
 	}
 
@@ -320,49 +321,49 @@ func (e *encodeSession) writeMetadataFrame() {
 func (e *encodeSession) writeStdin(stdin io.WriteCloser) {
 	_, err := io.Copy(stdin, e.pipeReader)
 	if err != nil {
-		Logln("io.Copy stdin Error:", err)
+		logln("io.Copy stdin Error:", err)
 	}
 	err = stdin.Close()
 	if err != nil {
-		Logln("stdin.Close Error:", err)
+		logln("stdin.Close Error:", err)
 	}
 }
 
 func (e *encodeSession) readStdout(stdout io.ReadCloser) {
 	defer close(e.frameChannel)
 
+	decoder := ogg.NewDecoder(stdout)
+	packetBuf := make([]byte, 0)
+
 	for {
-		// read data from ffmpeg stdout
-		inBuf := make([]byte, (e.options.Bitrate*e.options.FrameDuration)/8)
-		err := binary.Read(stdout, binary.LittleEndian, &inBuf)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			return
-		}
-
+		// Retrieve a page
+		page, err := decoder.Decode()
 		if err != nil {
-			Logln("error reading from ffmpeg stdout:", err)
-			return
+			if err != io.EOF {
+				logln("Error reading fmmpeg stdout:", err)
+			}
+			break
 		}
 
-		var framebuf bytes.Buffer
+		// logln("Packet size:", len(page.Packet))
+		// logf("Page type: %X, serial: %d, granule: %d\n", page.Type, page.Serial, page.Granule)
 
-		// write frameheader
-		opuslen := int16(len(inBuf))
-		err = binary.Write(&framebuf, binary.LittleEndian, &opuslen)
-		if err != nil {
-			Logln("error writing output:", err)
-			return
+		// The current position in the page data
+		curPos := 0
+
+		// Read all the opus frames from the segment table
+		for _, seg := range page.SegTbl {
+			l := uint8(seg)
+
+			packetBuf = append(packetBuf, page.Packet[curPos:curPos+int(l)]...)
+			curPos += int(l)
+
+			if l < 255 {
+				// logln("OPUS FRAME?", len(packetBuf))
+				e.frameChannel <- packetBuf
+				packetBuf = make([]byte, 0)
+			}
 		}
-
-		// write opus data to stdout
-		err = binary.Write(&framebuf, binary.LittleEndian, &inBuf)
-		if err != nil {
-			Logln("error writing frame:", err)
-			continue
-		}
-
-		// Add to framebuffer
-		e.frameChannel <- framebuf.Bytes()
 	}
 }
 
@@ -385,9 +386,10 @@ func (e *encodeSession) Stop() error {
 func (e *encodeSession) ReadFrame() (frame []byte, err error) {
 	frame = <-e.frameChannel
 	if frame == nil {
-		err = ErrClosed
+		return nil, ErrClosed
 	}
-	return
+
+	return frame, nil
 }
 
 // Running return true if running

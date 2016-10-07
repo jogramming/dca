@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -22,12 +21,25 @@ func main() {
 	// NOTE: All of the below fields are required for this example to work correctly.
 	var (
 		Token     = flag.String("t", "", "Discord token.")
-		GuildID   = flag.String("g", "183362174188650497", "Guild ID")
-		ChannelID = flag.String("c", "183362174188650498", "Channel ID")
+		GuildID   = flag.String("g", "", "Guild ID")
+		ChannelID = flag.String("c", "", "Channel ID")
 		Folder    = flag.String("f", "sounds", "Folder of files to play.")
 		err       error
 	)
 	flag.Parse()
+
+	if *GuildID == "" {
+		log.Fatal("No guild specified")
+	}
+
+	if *ChannelID == "" {
+		log.Println("No channdlid specified, using guildid (default voice channel if not deleted)")
+		ChannelID = GuildID
+	}
+
+	if *Token == "" {
+		log.Fatal("No token specified!")
+	}
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
@@ -79,6 +91,7 @@ func main() {
 func PlayAudioFile(v *discordgo.VoiceConnection, filename string) {
 	opts := dca.StdEncodeOptions
 	opts.RawOutput = true
+	opts.Bitrate = 128
 
 	encodeSession := dca.EncodeFile(filename, opts)
 
@@ -97,11 +110,11 @@ func PlayAudioFile(v *discordgo.VoiceConnection, filename string) {
 			break
 		}
 
-		audio, err := dca.DecodeFrame(bytes.NewBuffer(frame))
-		if err != nil {
-			continue // Make sure we read all he frames, otherwise theres a leak!
-		}
+		// audio, err := dca.DecodeFrame(bytes.NewBuffer(frame))
+		// if err != nil {
+		// 	continue // Make sure we read all he frames, otherwise theres a leak!
+		// }
 
-		v.OpusSend <- audio
+		v.OpusSend <- frame
 	}
 }

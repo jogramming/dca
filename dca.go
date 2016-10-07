@@ -20,8 +20,8 @@ const (
 
 var Logger *log.Logger
 
-// Logln logs to assigned logger or standard logger
-func Logln(s ...interface{}) {
+// logln logs to assigned logger or standard logger
+func logln(s ...interface{}) {
 	if Logger != nil {
 		Logger.Println(s...)
 		return
@@ -30,8 +30,8 @@ func Logln(s ...interface{}) {
 	log.Println(s...)
 }
 
-// Logf logs to assigned logger or standard logger
-func Logf(format string, a ...interface{}) {
+// logln logs to assigned logger or standard logger
+func logf(format string, a ...interface{}) {
 	if Logger != nil {
 		Logger.Printf(format, a...)
 		return
@@ -47,7 +47,7 @@ func DecodeFrame(r io.Reader) (frame []byte, err error) {
 	if err != nil {
 		return
 	}
-
+	logln(size)
 	frame = make([]byte, size)
 	err = binary.Read(r, binary.LittleEndian, &frame)
 	return
