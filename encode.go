@@ -45,6 +45,9 @@ type EncodeOptions struct {
 	CoverFormat      string           // Format the cover art will be encoded with (ex "jpeg)
 	CompressionLevel int              // Compression level, higher is better qualiy but slower encoding (0 - 10)
 	BufferedFrames   int              // How big the frame buffer should be
+	VBR              bool             // Wether vbr is used or not (variable bitrate)
+
+	Comment string // Leave a comment in the metadata
 }
 
 func (e EncodeOptions) PCMFrameLen() int { // DCA needs this
@@ -74,6 +77,7 @@ var StdEncodeOptions = &EncodeOptions{
 	Application:      AudioApplicationAudio,
 	CompressionLevel: 10,
 	BufferedFrames:   100, // At 20ms frames thats 2s
+	VBR:              true,
 }
 
 // EncodeSession is an encoding session
@@ -158,8 +162,13 @@ func (e *encodeSession) run() {
 		e.options = StdEncodeOptions
 	}
 
+	vbrStr := "on"
+	if !e.options.VBR {
+		vbrStr = "off"
+	}
+
 	// Launch ffmpeg with a variety of different fruits and goodies mixed togheter
-	ffmpeg := exec.Command("ffmpeg", "-stats", "-i", inFile, "-map", "0:a", "-acodec", "libopus", "-f", "ogg", "-sample_fmt", "s16", "-vbr", "on",
+	ffmpeg := exec.Command("ffmpeg", "-stats", "-i", inFile, "-map", "0:a", "-acodec", "libopus", "-f", "ogg", "-sample_fmt", "s16", "-vbr", vbrStr,
 		"-compression_level", strconv.Itoa(e.options.CompressionLevel), "-vol", strconv.Itoa(e.options.Volume), "-ar", strconv.Itoa(e.options.FrameRate),
 		"-ac", strconv.Itoa(e.options.Channels), "-b:a", strconv.Itoa(e.options.Bitrate*1000), "-application", string(e.options.Application), "-frame_duration", strconv.Itoa(e.options.FrameDuration), "pipe:1")
 
@@ -236,7 +245,7 @@ func (e *encodeSession) writeMetadataFrame() {
 			Application: string(e.options.Application),
 			FrameSize:   e.options.PCMFrameLen(),
 			Channels:    e.options.Channels,
-			VBR:         true,
+			VBR:         e.options.VBR,
 		},
 		SongInfo: &SongMetadata{},
 		Origin:   &OriginMetadata{},
@@ -285,7 +294,7 @@ func (e *encodeSession) writeMetadataFrame() {
 			Artist:   ffprobeData.Format.Tags.Artist,
 			Album:    ffprobeData.Format.Tags.Album,
 			Genre:    ffprobeData.Format.Tags.Genre,
-			Comments: "", // change later?
+			Comments: e.options.Comment,
 		}
 
 		metadata.Origin = &OriginMetadata{
@@ -354,7 +363,6 @@ func (e *encodeSession) writeMetadataFrame() {
 	}
 
 	buf.Write(jsonData)
-	logln(string(jsonData))
 	e.frameChannel <- buf.Bytes()
 }
 

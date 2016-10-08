@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/jonas747/dca"
 	"os"
+	"time"
 )
 
 // All global variables used within the program
@@ -30,9 +31,14 @@ var (
 	// if true, dca sends raw output without any magic bytes or json metadata
 	RawOutput bool
 
-	FrameDuration int // uint16 size of each audio frame
+	FrameDuration int // Duration in ms of each audio frame
+
+	// Wether variable bitrate is used or not
+	VBR bool
 
 	Volume int // change audio volume (256=normal)
+
+	Comment string // Comment left in the metadata
 
 	//OpusEncoder *gopus.Encoder
 
@@ -40,6 +46,8 @@ var (
 	CoverFormat string = "jpeg"
 
 	OutFile string = "pipe:1"
+
+	Quiet bool // disable all stats output
 
 	err error
 )
@@ -53,9 +61,12 @@ func init() {
 	flag.IntVar(&FrameRate, "ar", 48000, "audio sampling rate")
 	flag.IntVar(&FrameDuration, "as", 20, "audio frame duration can be 20, 40, or 60 (ms)")
 	flag.IntVar(&Bitrate, "ab", 128, "audio encoding bitrate in kb/s can be 8 - 128")
+	flag.BoolVar(&VBR, "vbr", true, "variable bitrate")
 	flag.BoolVar(&RawOutput, "raw", false, "Raw opus output (no metadata or magic bytes)")
 	flag.StringVar(&Application, "aa", "audio", "audio application can be voip, audio, or lowdelay")
 	flag.StringVar(&CoverFormat, "cf", "jpeg", "format the cover art will be encoded with")
+	flag.StringVar(&Comment, "com", "", "leave a comment in the metadata")
+	flag.BoolVar(&Quiet, "quiet", false, "disable stats output to stderr")
 
 	if len(os.Args) < 2 {
 		flag.Usage()
@@ -126,6 +137,8 @@ func main() {
 		RawOutput:     RawOutput,
 		Application:   dca.AudioApplication(Application),
 		CoverFormat:   CoverFormat,
+		VBR:           VBR,
+		Comment:       Comment,
 	}
 
 	var output = os.Stdout
@@ -137,6 +150,7 @@ func main() {
 	}
 
 	framecounter := 0
+	totalSize := 0
 	for {
 		frame, err := session.ReadFrame()
 		if err != nil {
@@ -147,7 +161,17 @@ func main() {
 			fmt.Fprintln(os.Stderr, "Error writing frame", err)
 			break
 		}
-		framecounter++
+
+		if !Quiet {
+			framecounter++
+			dur := time.Duration(framecounter*options.FrameDuration) * time.Millisecond
+			totalSize += len(frame)
+			fmt.Fprintf(os.Stderr, "Frames processed: %6d, Duration: %10s, Size: %6dkB\r", framecounter, dur.String(), totalSize/1000)
+		}
+
 	}
-	fmt.Fprintf(os.Stderr, "Finished encoding, wrote %d frames\n", framecounter)
+
+	if !Quiet {
+		fmt.Fprintf(os.Stderr, "\nFinished encoding, wrote %d frames\n", framecounter)
+	}
 }
