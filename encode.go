@@ -77,11 +77,16 @@ type EncodeSession interface {
 	Stop() error                          // Stops the encoding session
 	ReadFrame() (frame []byte, err error) // Retrieves a frame
 	Running() bool                        // Wether its encoding or not
+	Options() *EncodeOptions              // Returns the encodeoptions for this session
 
 	// Returns ffmpeg stats, NOTE: this is not say the current position in playback
 	// but instead how much ffmpeg has transcoded, to get how far into playback you are
 	// you have to track the number of frames sent to discord youself
 	Stats() *EncodeStats
+
+	// Truncate will throw away all unread frames call this to make sure there
+	// will be no leaks, you don't want ffmpeg processes to start piling up on your system
+	Truncate()
 }
 
 // EncodeStats is transcode stats reported by ffmpeg
@@ -526,4 +531,15 @@ func (e *encodeSession) Stats() *EncodeStats {
 	e.Unlock()
 
 	return s
+}
+
+func (e *encodeSession) Options() *EncodeOptions {
+	return e.options
+}
+
+func (e *encodeSession) Truncate() {
+	for _ = range e.frameChannel {
+		// empty till closed
+		// Cats can be right-pawed or left-pawed.
+	}
 }

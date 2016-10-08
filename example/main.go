@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
@@ -50,6 +49,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	discord.LogLevel = discordgo.LogWarning
 
 	// Open Websocket
 	err = discord.Open()
@@ -89,12 +89,6 @@ func main() {
 // Discord voice server/channel.  voice websocket and udp socket
 // must already be setup before this will work.
 func PlayAudioFile(v *discordgo.VoiceConnection, filename string) {
-	opts := dca.StdEncodeOptions
-	opts.RawOutput = true
-	opts.Bitrate = 128
-
-	encodeSession := dca.EncodeFile(filename, opts)
-
 	// Send "speaking" packet over the voice websocket
 	err := v.Speaking(true)
 	if err != nil {
@@ -104,27 +98,29 @@ func PlayAudioFile(v *discordgo.VoiceConnection, filename string) {
 	// Send not "speaking" packet over the websocket when we finish
 	defer v.Speaking(false)
 
-	// Number of frames we've sent to discord,
-	// if we multiply this by frameduration
-	// we get how far into playback we are
-	framesSent := 0
+	opts := dca.StdEncodeOptions
+	opts.RawOutput = true
+	opts.Bitrate = 128
+
+	encodeSession := dca.EncodeFile(filename, opts)
+	stream := dca.StreamFromEncodeSession(encodeSession, v)
+
+	ticker := time.NewTicker(time.Second)
 
 	for {
-		frame, err := encodeSession.ReadFrame()
-		if err != nil {
+		<-ticker.C
+
+		fin, err := stream.Finished()
+		if fin {
+			if err != nil {
+				log.Fatal("Stream err:", err)
+			}
 			break
 		}
 
-		audio, err := dca.DecodeFrame(bytes.NewBuffer(frame))
-		if err != nil {
-			continue // Make sure we read all he frames, otherwise theres a leak!
-		}
-		framesSent++
-
-		v.OpusSend <- audio
-
 		stats := encodeSession.Stats()
-		playbackPosition := time.Duration(framesSent*opts.FrameDuration) * time.Millisecond
-		fmt.Printf("Playback: %-10s, Transcode Stats: Time: %5s, Size: %5dkB, Bitrate: %6.2fkB, Speed: %5.1fx\r", playbackPosition, stats.Duration.String(), stats.Size, stats.Bitrate, stats.Speed)
+		playbackPosition := stream.PlaybackPosition()
+
+		fmt.Printf("Playback: %10s, Transcode Stats: Time: %5s, Size: %5dkB, Bitrate: %6.2fkB, Speed: %5.1fx\r", playbackPosition, stats.Duration.String(), stats.Size, stats.Bitrate, stats.Speed)
 	}
 }
