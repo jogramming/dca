@@ -1,8 +1,8 @@
 package dca
 
 import (
-	"bytes"
 	"github.com/bwmarrin/discordgo"
+	"io"
 	"sync"
 	"time"
 )
@@ -57,20 +57,14 @@ func (s *StreamingSession) stream() {
 		}
 		s.Unlock()
 
-		frame, err := s.e.ReadFrame()
-		if err != nil {
-			s.Lock()
-			s.finished = true
-			s.Unlock()
-			break
-		}
-
-		err = s.handleDCAFrame(frame)
+		err := s.readNext()
 		if err != nil {
 			s.Lock()
 
 			s.finished = true
-			s.err = err
+			if err != io.EOF {
+				s.err = err
+			}
 
 			// Make sure there are no leaks
 			s.e.Truncate()
@@ -81,8 +75,8 @@ func (s *StreamingSession) stream() {
 	}
 }
 
-func (s *StreamingSession) handleDCAFrame(frame []byte) error {
-	opus, err := DecodeFrame(bytes.NewBuffer(frame))
+func (s *StreamingSession) readNext() error {
+	opus, err := DecodeFrame(s.e)
 	if err != nil {
 		return err
 	}

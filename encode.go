@@ -82,6 +82,8 @@ var StdEncodeOptions = &EncodeOptions{
 
 // EncodeSession is an encoding session
 type EncodeSession interface {
+	io.Reader
+
 	Stop() error                          // Stops the encoding session
 	ReadFrame() (frame []byte, err error) // Retrieves a frame
 	Running() bool                        // Wether its encoding or not
@@ -118,6 +120,10 @@ type encodeSession struct {
 	lastStats    *EncodeStats
 
 	lastFrame int
+
+	// buffer that stores unread bytes (not full frames)
+	// used to implement io.Reader
+	buf bytes.Buffer
 }
 
 // EncodedMem encodes data from memory
@@ -540,4 +546,21 @@ func (e *encodeSession) Truncate() {
 		// empty till closed
 		// Cats can be right-pawed or left-pawed.
 	}
+}
+
+// implement io.Reader
+func (e *encodeSession) Read(p []byte) (n int, err error) {
+	if e.buf.Len() >= len(p) {
+		return e.buf.Read(p)
+	}
+
+	for e.buf.Len() < len(p) {
+		f, err := e.ReadFrame()
+		if err != nil {
+			break
+		}
+		e.buf.Write(f)
+	}
+
+	return e.buf.Read(p)
 }

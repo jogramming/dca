@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/jonas747/dca"
+	"io"
 	"os"
 	"time"
 )
@@ -140,29 +141,27 @@ func main() {
 		session = dca.EncodeFile(InFile, options)
 	}
 
-	framecounter := 0
-	totalSize := 0
-	for {
-		frame, err := session.ReadFrame()
-		if err != nil {
-			break
-		}
-		_, err = output.Write(frame)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error writing frame", err)
-			break
-		}
-
-		if !Quiet {
-			framecounter++
-			dur := time.Duration(framecounter*options.FrameDuration) * time.Millisecond
-			totalSize += len(frame)
-			fmt.Fprintf(os.Stderr, "Frames processed: %6d, Duration: %10s, Size: %6dkB\r", framecounter, dur.String(), totalSize/1000)
-		}
-
+	if !Quiet {
+		go statusPrinter(session)
 	}
 
-	if !Quiet {
-		fmt.Fprintf(os.Stderr, "\nFinished encoding, wrote %d frames\n", framecounter)
+	_, err := io.Copy(output, session)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "\nError writing:", err)
+		os.Exit(1)
+	} else if !Quiet {
+		fmt.Fprintf(os.Stderr, "\nFinished encoding\n")
+	}
+}
+
+func statusPrinter(session dca.EncodeSession) {
+	ticker := time.NewTicker(time.Millisecond * 500)
+	for {
+		<-ticker.C
+		stats := session.Stats()
+		fmt.Fprintf(os.Stderr, "Time: %10s, Bitrate: %6.1fkbits/s, Size: %6dkB, Speed: %7.1f\r", stats.Duration.String(), stats.Bitrate, stats.Size, stats.Speed)
+		if !session.Running() {
+			break
+		}
 	}
 }
