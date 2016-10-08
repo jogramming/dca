@@ -174,10 +174,8 @@ func (e *encodeSession) run() {
 
 	// logln(ffmpeg.Args)
 
-	stdIn, err := ffmpeg.StdinPipe()
-	if err != nil {
-		e.Unlock()
-		logln("StdinPipe Error:", err)
+	if e.pipeReader != nil {
+		ffmpeg.Stdin = e.pipeReader
 	}
 
 	stdout, err := ffmpeg.StdoutPipe()
@@ -210,10 +208,6 @@ func (e *encodeSession) run() {
 	}
 
 	e.started = time.Now()
-
-	if e.pipeReader != nil {
-		go e.writeStdin(stdIn)
-	}
 
 	e.process = ffmpeg.Process
 	e.Unlock()
@@ -364,18 +358,6 @@ func (e *encodeSession) writeMetadataFrame() {
 
 	buf.Write(jsonData)
 	e.frameChannel <- buf.Bytes()
-}
-
-// Writes to the pipe of ffmpeg
-func (e *encodeSession) writeStdin(stdin io.WriteCloser) {
-	_, err := io.Copy(stdin, e.pipeReader)
-	if err != nil {
-		logln("io.Copy stdin Error:", err)
-	}
-	err = stdin.Close()
-	if err != nil {
-		logln("stdin.Close Error:", err)
-	}
 }
 
 func (e *encodeSession) readStderr(stderr io.ReadCloser) {
