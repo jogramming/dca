@@ -68,11 +68,6 @@ func init() {
 	flag.StringVar(&Comment, "com", "", "leave a comment in the metadata")
 	flag.BoolVar(&Quiet, "quiet", false, "disable stats output to stderr")
 
-	if len(os.Args) < 2 {
-		flag.Usage()
-		os.Exit(1)
-	}
-
 	flag.Parse()
 }
 
@@ -114,10 +109,6 @@ func main() {
 			return
 		}
 	}
-
-	//////////////////////////////////////////////////////////////////////////
-	// BLOCK : Create chans, buffers, and encoder for use
-	//////////////////////////////////////////////////////////////////////////
 
 	if Bitrate < 1 || Bitrate > 512 {
 		Bitrate = 64 // Set to Discord default
