@@ -5,9 +5,9 @@ package dca
 // https://github.com/bwmarrin/dca/issues/5#issuecomment-189713886
 type Metadata struct {
 	Dca      *DCAMetadata    `json:"dca"`
+	Opus     *OpusMetadata   `json:"opus"`
 	SongInfo *SongMetadata   `json:"info"`
 	Origin   *OriginMetadata `json:"origin"`
-	Opus     *OpusMetadata   `json:"opus"`
 	Extra    *ExtraMetadata  `json:"extra"`
 }
 
@@ -63,6 +63,7 @@ type OpusMetadata struct {
 	Application string `json:"mode"`
 	FrameSize   int    `json:"frame_size"`
 	Channels    int    `json:"channels"`
+	VBR         bool   `json:"vbr"`
 }
 
 // Extra metadata struct

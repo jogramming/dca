@@ -47,6 +47,10 @@ type EncodeOptions struct {
 	BufferedFrames   int              // How big the frame buffer should be
 }
 
+func (e EncodeOptions) PCMFrameLen() int { // DCA needs this
+	return 960 * e.Channels * (e.FrameDuration / 20)
+}
+
 // Validate returns an error if the options are not correct
 func (opts *EncodeOptions) Validate() error {
 	if opts.Volume < 0 || opts.Volume > 512 {
@@ -223,19 +227,20 @@ func (e *encodeSession) writeMetadataFrame() {
 				Name:    "dca",
 				Version: LibraryVersion,
 				Url:     GitHubRepositoryURL,
-				Author:  "bwmarrin",
+				Author:  "jonas747",
 			},
 		},
-		SongInfo: &SongMetadata{},
-		Origin:   &OriginMetadata{},
 		Opus: &OpusMetadata{
 			Bitrate:     e.options.Bitrate * 1000,
 			SampleRate:  e.options.FrameRate,
 			Application: string(e.options.Application),
-			FrameSize:   e.options.FrameDuration * (e.options.FrameRate / 1000),
+			FrameSize:   e.options.PCMFrameLen(),
 			Channels:    e.options.Channels,
+			VBR:         true,
 		},
-		Extra: &ExtraMetadata{},
+		SongInfo: &SongMetadata{},
+		Origin:   &OriginMetadata{},
+		Extra:    &ExtraMetadata{},
 	}
 	var cmdBuf bytes.Buffer
 	// get ffprobe data
@@ -349,6 +354,7 @@ func (e *encodeSession) writeMetadataFrame() {
 	}
 
 	buf.Write(jsonData)
+	logln(string(jsonData))
 	e.frameChannel <- buf.Bytes()
 }
 
