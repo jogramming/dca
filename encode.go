@@ -20,10 +20,6 @@ import (
 	"time"
 )
 
-var (
-	ErrClosed = errors.New("Frame channel is closed (no more frames)")
-)
-
 // AudioApplication is an application profile for opus encoding
 type AudioApplication string
 
@@ -510,7 +506,7 @@ func (e *encodeSession) Stop() error {
 func (e *encodeSession) ReadFrame() (frame []byte, err error) {
 	frame = <-e.frameChannel
 	if frame == nil {
-		return nil, ErrClosed
+		return nil, io.EOF
 	}
 
 	return frame, nil
