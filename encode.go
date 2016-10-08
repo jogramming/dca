@@ -534,6 +534,8 @@ func (e *encodeSession) Options() *EncodeOptions {
 }
 
 func (e *encodeSession) Truncate() {
+	e.Stop()
+
 	for _ = range e.frameChannel {
 		// empty till closed
 		// Cats can be right-pawed or left-pawed.
