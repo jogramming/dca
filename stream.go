@@ -153,3 +153,11 @@ func (s *StreamingSession) Finished() (bool, error) {
 
 	return fin, err
 }
+
+func (s *StreamingSession) Paused() bool {
+	s.Lock()
+	p := s.paused
+	s.Unlock()
+
+	return p
+}
