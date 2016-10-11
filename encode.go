@@ -79,10 +79,10 @@ var StdEncodeOptions = &EncodeOptions{
 // EncodeSession is an encoding session
 type EncodeSession interface {
 	io.Reader
+	OpusReader
 
 	Stop() error                          // Stops the encoding session
 	ReadFrame() (frame []byte, err error) // Retrieves a dca frame
-	OpusFrame() (frame []byte, err error) // Retrieves a opus frame
 	Running() bool                        // Wether its encoding or not
 	Options() *EncodeOptions              // Returns the encodeoptions for this session
 

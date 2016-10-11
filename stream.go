@@ -17,6 +17,9 @@ var (
 type StreamingSession struct {
 	sync.Mutex
 
+	// If this channel is not nil, an error will be sen when finished (or nil if no error)
+	done chan error
+
 	source OpusReader
 	vc     *discordgo.VoiceConnection
 
@@ -29,10 +32,14 @@ type StreamingSession struct {
 }
 
 // Creates a new stream from an io.reader
-func NewStream(source OpusReader, vc *discordgo.VoiceConnection, frameDuration int) *StreamingSession {
+// source   : The source of the opus frames to be sent, either from an encoder or decoder
+// vc       : The voice connecion to stream to
+// done     : If not nil, an error will be sent on it when completed
+func NewStream(source OpusReader, vc *discordgo.VoiceConnection, done chan error) *StreamingSession {
 	session := &StreamingSession{
 		source: source,
 		vc:     vc,
+		done:   done,
 	}
 
 	go session.stream()
@@ -72,6 +79,12 @@ func (s *StreamingSession) stream() {
 			s.finished = true
 			if err != io.EOF {
 				s.err = err
+			}
+
+			if s.done != nil {
+				go func() {
+					s.done <- err
+				}()
 			}
 
 			s.Unlock()
