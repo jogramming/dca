@@ -1,10 +1,15 @@
 package dca
 
 import (
+	"errors"
 	"github.com/bwmarrin/discordgo"
 	"io"
 	"sync"
 	"time"
+)
+
+var (
+	ErrVoiceConnClosed = errors.New("Voice connection closed")
 )
 
 // StreamingSession provides an easy way to directly transmit opus audio
@@ -38,6 +43,7 @@ func (s *StreamingSession) stream() {
 	s.Lock()
 	if s.running {
 		s.Unlock()
+		panic("Stream is already running!")
 		return
 	}
 	s.running = true
@@ -81,7 +87,15 @@ func (s *StreamingSession) readNext() error {
 		return err
 	}
 
-	s.vc.OpusSend <- opus
+	// Timeout after 100ms (Maybe this needs to be changed?)
+	timeOut := time.After(time.Second)
+
+	// This will attempt to send on the channel before the timeout, which is 1s
+	select {
+	case <-timeOut:
+		return ErrVoiceConnClosed
+	case s.vc.OpusSend <- opus:
+	}
 
 	s.Lock()
 	s.framesSent++
@@ -91,7 +105,7 @@ func (s *StreamingSession) readNext() error {
 }
 
 // SetRunning provides pause/unpause functionality
-func (s *StreamingSession) SetRunning(running bool) {
+func (s *StreamingSession) SetPaused(paused bool) {
 	s.Lock()
 
 	if s.finished {
@@ -100,7 +114,7 @@ func (s *StreamingSession) SetRunning(running bool) {
 	}
 
 	// Already running
-	if running && s.running {
+	if !paused && s.running {
 		if s.paused {
 			// Was set to stop running after next frame so undo this
 			s.paused = false
@@ -111,7 +125,7 @@ func (s *StreamingSession) SetRunning(running bool) {
 	}
 
 	// Already stopped
-	if !running && !s.running {
+	if paused && !s.running {
 		// Not running, but starting up..
 		if !s.paused {
 			s.paused = true
@@ -122,11 +136,11 @@ func (s *StreamingSession) SetRunning(running bool) {
 	}
 
 	// Time to start it up again
-	if !s.running && s.paused && running {
+	if !s.running && s.paused && !paused {
 		go s.stream()
 	}
 
-	s.paused = !running
+	s.paused = paused
 	s.Unlock()
 }
 
