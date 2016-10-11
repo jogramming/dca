@@ -81,7 +81,8 @@ type EncodeSession interface {
 	io.Reader
 
 	Stop() error                          // Stops the encoding session
-	ReadFrame() (frame []byte, err error) // Retrieves a frame
+	ReadFrame() (frame []byte, err error) // Retrieves a dca frame
+	OpusFrame() (frame []byte, err error) // Retrieves a opus frame
 	Running() bool                        // Wether its encoding or not
 	Options() *EncodeOptions              // Returns the encodeoptions for this session
 
@@ -512,6 +513,10 @@ func (e *encodeSession) ReadFrame() (frame []byte, err error) {
 	return frame, nil
 }
 
+func (e *encodeSession) OpusFrame() (frame []byte, err error) {
+	return DecodeFrame(e)
+}
+
 // Running return true if running
 func (e *encodeSession) Running() (running bool) {
 	e.Lock()
@@ -559,4 +564,8 @@ func (e *encodeSession) Read(p []byte) (n int, err error) {
 	}
 
 	return e.buf.Read(p)
+}
+
+func (e *encodeSession) FrameDuration() int {
+	return e.options.FrameDuration
 }

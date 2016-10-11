@@ -18,6 +18,11 @@ const (
 	GitHubRepositoryURL string = "https://github.com/jonas747/dca"
 )
 
+type OpusReader interface {
+	OpusFrame() (frame []byte, err error)
+	FrameDuration() int
+}
+
 var Logger *log.Logger
 
 // logln logs to assigned logger or standard logger

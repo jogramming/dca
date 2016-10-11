@@ -17,8 +17,9 @@ var (
 type StreamingSession struct {
 	sync.Mutex
 
-	e          EncodeSession
-	vc         *discordgo.VoiceConnection
+	source OpusReader
+	vc     *discordgo.VoiceConnection
+
 	paused     bool
 	framesSent int
 
@@ -27,10 +28,11 @@ type StreamingSession struct {
 	err      error // If an error occured and we had to stop
 }
 
-func StreamFromEncodeSession(e EncodeSession, vc *discordgo.VoiceConnection) *StreamingSession {
+// Creates a new stream from an io.reader
+func NewStream(source OpusReader, vc *discordgo.VoiceConnection, frameDuration int) *StreamingSession {
 	session := &StreamingSession{
-		e:  e,
-		vc: vc,
+		source: source,
+		vc:     vc,
 	}
 
 	go session.stream()
@@ -72,9 +74,6 @@ func (s *StreamingSession) stream() {
 				s.err = err
 			}
 
-			// Make sure there are no leaks
-			s.e.Truncate()
-
 			s.Unlock()
 			break
 		}
@@ -82,7 +81,7 @@ func (s *StreamingSession) stream() {
 }
 
 func (s *StreamingSession) readNext() error {
-	opus, err := DecodeFrame(s.e)
+	opus, err := s.source.OpusFrame()
 	if err != nil {
 		return err
 	}
@@ -147,7 +146,7 @@ func (s *StreamingSession) SetPaused(paused bool) {
 // PlaybackPosition returns the the duration of content we have transmitted so far
 func (s *StreamingSession) PlaybackPosition() time.Duration {
 	s.Lock()
-	dur := time.Duration(s.framesSent*s.e.Options().FrameDuration) * time.Millisecond
+	dur := time.Duration(s.framesSent*s.source.FrameDuration()) * time.Millisecond
 	s.Unlock()
 	return dur
 }

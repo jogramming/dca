@@ -99,3 +99,13 @@ func (d *Decoder) OpusFrame() (frame []byte, err error) {
 	frame, err = DecodeFrame(d.r)
 	return
 }
+
+func (d *Decoder) FrameDuration() int {
+	if d.Metadata == nil {
+		return 20
+	}
+
+	// I don't understand nick, why does it have to be like this nick, please nick, im not having a good time nick.
+	// 960B = pcm framesize of 20ms 1 channel audio
+	return ((d.Metadata.Opus.FrameSize / d.Metadata.Opus.Channels) / 960) * 20
+}
