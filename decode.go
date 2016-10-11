@@ -1,6 +1,7 @@
 package dca
 
 import (
+	"bufio"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -9,26 +10,36 @@ import (
 )
 
 var (
-	ErrNotDCA = errors.New("DCA Magic header not found, either not dca or raw dca frames")
+	ErrNotDCA        = errors.New("DCA Magic header not found, either not dca or raw dca frames")
+	ErrNotFirstFrame = errors.New("Metadata can only be found in the first frame")
 )
 
 type Decoder struct {
 	Metadata      *Metadata
 	FormatVersion int
-	r             io.Reader
+	r             *bufio.Reader
+
+	// Set to true after the first frame has been read
+	firstFrameProcessed bool
 }
 
-// NewDecoder returns a new dca decoder, and reads the first metadata frame
+// NewDecoder returns a new dca decoder
 func NewDecoder(r io.Reader) *Decoder {
 	decoder := &Decoder{
-		r: r,
+		r: bufio.NewReader(r),
 	}
 
 	return decoder
 }
 
 // ReadMetadata reads the first metadata frame
+// OpusFrame will call this automatically if
 func (d *Decoder) ReadMetadata() error {
+	if d.firstFrameProcessed {
+		return ErrNotFirstFrame
+	}
+	d.firstFrameProcessed = true
+
 	fingerprint := make([]byte, 4)
 	_, err := d.r.Read(fingerprint)
 	if err != nil {
@@ -68,8 +79,23 @@ func (d *Decoder) ReadMetadata() error {
 }
 
 // OpusFrame returns the next audio frame
-// (without the prefixed length, can be sent to discord as-is)
+// If this is the first frame it will also check for metadata in it
 func (d *Decoder) OpusFrame() (frame []byte, err error) {
+	if !d.firstFrameProcessed {
+		// Check to see if this contains metadata and read the metadata if so
+		magic, err := d.r.Peek(3)
+		if err != nil {
+			return nil, err
+		}
+
+		if string(magic) == "DCA" {
+			err = d.ReadMetadata()
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	frame, err = DecodeFrame(d.r)
 	return
 }
