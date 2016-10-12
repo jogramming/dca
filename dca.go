@@ -41,7 +41,6 @@ func logf(format string, a ...interface{}) {
 		Logger.Printf(format, a...)
 		return
 	}
-
 	log.Printf(format, a...)
 }
 

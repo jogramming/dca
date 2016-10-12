@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"github.com/jonas747/dca"
+	"io"
 	"io/ioutil"
 	"log"
 	"os/exec"
@@ -103,24 +104,26 @@ func PlayAudioFile(v *discordgo.VoiceConnection, filename string) {
 	opts.Bitrate = 128
 
 	encodeSession := dca.EncodeFile(filename, opts)
-	stream := dca.StreamFromEncodeSession(encodeSession, v)
+	done := make(chan error)
+	stream := dca.NewStream(encodeSession, v, done)
 
 	ticker := time.NewTicker(time.Second)
 
 	for {
-		<-ticker.C
-
-		fin, err := stream.Finished()
-		if fin {
-			if err != nil {
-				log.Fatal("Stream err:", err)
+		select {
+		case err := <-done:
+			if err != nil && err != io.EOF {
+				log.Fatal("An error occured", err)
 			}
-			break
+
+			// Clean up incase something happened and ffmpeg is still running
+			encodeSession.Truncate()
+			return
+		case <-ticker.C:
+			stats := encodeSession.Stats()
+			playbackPosition := stream.PlaybackPosition()
+
+			fmt.Printf("Playback: %10s, Transcode Stats: Time: %5s, Size: %5dkB, Bitrate: %6.2fkB, Speed: %5.1fx\r", playbackPosition, stats.Duration.String(), stats.Size, stats.Bitrate, stats.Speed)
 		}
-
-		stats := encodeSession.Stats()
-		playbackPosition := stream.PlaybackPosition()
-
-		fmt.Printf("Playback: %10s, Transcode Stats: Time: %5s, Size: %5dkB, Bitrate: %6.2fkB, Speed: %5.1fx\r", playbackPosition, stats.Duration.String(), stats.Size, stats.Bitrate, stats.Speed)
 	}
 }
