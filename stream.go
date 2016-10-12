@@ -13,7 +13,7 @@ var (
 )
 
 // StreamingSession provides an easy way to directly transmit opus audio
-// to discord from an encode session, use EncodeSession.StreamToDiscord
+// to discord from an encode session.
 type StreamingSession struct {
 	sync.Mutex
 
@@ -31,10 +31,10 @@ type StreamingSession struct {
 	err      error // If an error occured and we had to stop
 }
 
-// Creates a new stream from an io.reader
-// source   : The source of the opus frames to be sent, either from an encoder or decoder
-// vc       : The voice connecion to stream to
-// done     : If not nil, an error will be sent on it when completed
+// Creates a new stream from an Opusreader.
+// source   : The source of the opus frames to be sent, either from an encoder or decoder.
+// vc       : The voice connecion to stream to.
+// done     : If not nil, an error will be sent on it when completed.
 func NewStream(source OpusReader, vc *discordgo.VoiceConnection, done chan error) *StreamingSession {
 	session := &StreamingSession{
 		source: source,
@@ -116,7 +116,7 @@ func (s *StreamingSession) readNext() error {
 	return nil
 }
 
-// SetRunning provides pause/unpause functionality
+// SetPaused provides pause/unpause functionality
 func (s *StreamingSession) SetPaused(paused bool) {
 	s.Lock()
 
@@ -174,6 +174,7 @@ func (s *StreamingSession) Finished() (bool, error) {
 	return fin, err
 }
 
+// Paused returns wether the sream is paused or not
 func (s *StreamingSession) Paused() bool {
 	s.Lock()
 	p := s.paused

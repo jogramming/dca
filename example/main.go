@@ -7,6 +7,7 @@ import (
 	"github.com/jonas747/dca"
 	"io"
 	"io/ioutil"
+	//"io/ioutil"
 	"log"
 	"os/exec"
 	"runtime"
@@ -64,6 +65,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	voice.LogLevel = discordgo.LogWarning
 
 	// Hacky loop to prevent sending on a nil channel.
 	// TODO: Find a better way.
@@ -79,6 +81,7 @@ func main() {
 		discord.UpdateStatus(0, f.Name())
 		PlayAudioFile(voice, fmt.Sprintf("%s/%s", *Folder, f.Name()))
 	}
+
 	// Close connections
 	voice.Close()
 	discord.Close()
@@ -101,7 +104,7 @@ func PlayAudioFile(v *discordgo.VoiceConnection, filename string) {
 
 	opts := dca.StdEncodeOptions
 	opts.RawOutput = true
-	opts.Bitrate = 128
+	opts.Bitrate = 120
 
 	encodeSession := dca.EncodeFile(filename, opts)
 	done := make(chan error)

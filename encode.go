@@ -36,6 +36,7 @@ type EncodeOptions struct {
 	FrameRate        int              // audio sampling rate (ex 48000)
 	FrameDuration    int              // audio frame duration can be 20, 40, or 60 (ms)
 	Bitrate          int              // audio encoding bitrate in kb/s can be 8 - 128
+	PacketLoss       int              // expected packet loss percentage
 	RawOutput        bool             // Raw opus output (no metadata or magic bytes)
 	Application      AudioApplication // Audio application
 	CoverFormat      string           // Format the cover art will be encoded with (ex "jpeg)
@@ -60,6 +61,10 @@ func (opts *EncodeOptions) Validate() error {
 		return errors.New("Invalid FrameDuration")
 	}
 
+	if opts.PacketLoss < 0 || opts.PacketLoss > 100 {
+		return errors.New("Invalid packet loss percentage")
+	}
+
 	return nil
 }
 
@@ -72,7 +77,8 @@ var StdEncodeOptions = &EncodeOptions{
 	Bitrate:          64,
 	Application:      AudioApplicationAudio,
 	CompressionLevel: 10,
-	BufferedFrames:   100, // At 20ms frames thats 2s
+	PacketLoss:       1,
+	BufferedFrames:   100, // At 20ms frames that's 2s
 	VBR:              true,
 }
 
@@ -86,12 +92,12 @@ type EncodeSession interface {
 	Running() bool                        // Wether its encoding or not
 	Options() *EncodeOptions              // Returns the encodeoptions for this session
 
-	// Returns ffmpeg stats, NOTE: this is not say the current position in playback
-	// but instead how much ffmpeg has transcoded, to get how far into playback you are
+	// Returns ffmpeg stats, NOTE: this is not playback stats but transcode stats.
+	// To get how far into playback you are
 	// you have to track the number of frames sent to discord youself
 	Stats() *EncodeStats
 
-	// Truncate will throw away all unread frames call this to make sure there
+	// Truncate will throw away all unread frames and kill ffmpeg. call this to make sure there
 	// will be no leaks, you don't want ffmpeg processes to start piling up on your system
 	Truncate()
 }
@@ -134,7 +140,7 @@ func EncodeMem(r io.Reader, options *EncodeOptions) (session EncodeSession) {
 	return s
 }
 
-// EncodeFile encodes the file in path
+// EncodeFile encodes the file/url/other in path
 func EncodeFile(path string, options *EncodeOptions) (session EncodeSession) {
 	s := &encodeSession{
 		options:      options,
@@ -171,9 +177,10 @@ func (e *encodeSession) run() {
 	}
 
 	// Launch ffmpeg with a variety of different fruits and goodies mixed togheter
-	ffmpeg := exec.Command("ffmpeg", "-stats", "-i", inFile, "-map", "0:a", "-acodec", "libopus", "-f", "ogg", "-sample_fmt", "s16", "-vbr", vbrStr,
+	ffmpeg := exec.Command("ffmpeg", "-stats", "-i", inFile, "-map", "0:a", "-acodec", "libopus", "-f", "ogg", "-vbr", vbrStr,
 		"-compression_level", strconv.Itoa(e.options.CompressionLevel), "-vol", strconv.Itoa(e.options.Volume), "-ar", strconv.Itoa(e.options.FrameRate),
-		"-ac", strconv.Itoa(e.options.Channels), "-b:a", strconv.Itoa(e.options.Bitrate*1000), "-application", string(e.options.Application), "-frame_duration", strconv.Itoa(e.options.FrameDuration), "pipe:1")
+		"-ac", strconv.Itoa(e.options.Channels), "-b:a", strconv.Itoa(e.options.Bitrate*1000), "-application", string(e.options.Application),
+		"-frame_duration", strconv.Itoa(e.options.FrameDuration), "-packet_loss", strconv.Itoa(e.options.PacketLoss), "pipe:1")
 
 	// logln(ffmpeg.Args)
 
@@ -441,12 +448,16 @@ func (e *encodeSession) readStdout(stdout io.ReadCloser) {
 		// The current position in the page data
 		curPos := 0
 
+		readSegs := 0
 		// Read all the opus frames from the segment table
 		for _, seg := range page.SegTbl {
 			packetBuf.Write(page.Packet[curPos : curPos+int(seg)])
 			curPos += int(seg)
+			readSegs++
 
+			// Min size of an opus packet is 1 byte, can't be smaller
 			if seg < 255 && packetBuf.Len() > 0 {
+
 				// segment length is less than 255, end of packet
 				err = e.writeOpusFrame(packetBuf.Bytes())
 				if err != nil {
@@ -457,7 +468,6 @@ func (e *encodeSession) readStdout(stdout io.ReadCloser) {
 			}
 		}
 	}
-
 	if packetBuf.Len() > 0 {
 		err := e.writeOpusFrame(packetBuf.Bytes())
 		if err != nil {
