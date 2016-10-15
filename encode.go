@@ -227,7 +227,9 @@ func (e *encodeSession) run() {
 	e.readStdout(stdout)
 	err = ffmpeg.Wait()
 	if err != nil {
-		logln("Error waiting for ffmpeg:", err)
+		if err.Error() != "signal: killed" {
+			logln("Error waiting for ffmpeg:", err)
+		}
 	}
 }
 
