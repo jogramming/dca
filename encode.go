@@ -100,6 +100,9 @@ type EncodeSession interface {
 	// Truncate will throw away all unread frames and kill ffmpeg. call this to make sure there
 	// will be no leaks, you don't want ffmpeg processes to start piling up on your system
 	Truncate()
+
+	// Error() Returns any errors that occured
+	Error() error
 }
 
 // EncodeStats is transcode stats reported by ffmpeg
@@ -123,6 +126,7 @@ type encodeSession struct {
 	lastStats    *EncodeStats
 
 	lastFrame int
+	err       error
 
 	// buffer that stores unread bytes (not full frames)
 	// used to implement io.Reader
@@ -224,11 +228,14 @@ func (e *encodeSession) run() {
 
 	go e.readStderr(stderr)
 
+	defer close(e.frameChannel)
 	e.readStdout(stdout)
 	err = ffmpeg.Wait()
 	if err != nil {
 		if err.Error() != "signal: killed" {
-			logln("Error waiting for ffmpeg:", err)
+			e.Lock()
+			e.err = err
+			e.Unlock()
 		}
 	}
 }
@@ -431,8 +438,6 @@ func (e *encodeSession) handleStderrLine(line string) {
 }
 
 func (e *encodeSession) readStdout(stdout io.ReadCloser) {
-	defer close(e.frameChannel)
-
 	decoder := ogg.NewDecoder(stdout)
 
 	var packetBuf bytes.Buffer
@@ -453,7 +458,7 @@ func (e *encodeSession) readStdout(stdout io.ReadCloser) {
 		readSegs := 0
 		// Read all the opus frames from the segment table
 		for _, seg := range page.SegTbl {
-			packetBuf.Write(page.Packet[curPos : curPos+int(seg)])
+			packetBuf.Write(page.Data[curPos : curPos+int(seg)])
 			curPos += int(seg)
 			readSegs++
 
@@ -580,4 +585,10 @@ func (e *encodeSession) Read(p []byte) (n int, err error) {
 
 func (e *encodeSession) FrameDuration() int {
 	return e.options.FrameDuration
+}
+
+func (e *encodeSession) Error() error {
+	e.Lock()
+	defer e.Unlock()
+	return e.err
 }
