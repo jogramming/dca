@@ -438,13 +438,11 @@ func (e *encodeSession) handleStderrLine(line string) {
 }
 
 func (e *encodeSession) readStdout(stdout io.ReadCloser) {
-	decoder := ogg.NewDecoder(stdout)
-
-	var packetBuf bytes.Buffer
+	decoder := ogg.NewPacketDecoder(ogg.NewDecoder(stdout))
 
 	for {
-		// Retrieve a page
-		page, err := decoder.Decode()
+		// Retrieve a packet
+		packet, _, err := decoder.Decode()
 		if err != nil {
 			if err != io.EOF {
 				logln("Error reading fmmpeg stdout:", err)
@@ -452,33 +450,10 @@ func (e *encodeSession) readStdout(stdout io.ReadCloser) {
 			break
 		}
 
-		// The current position in the page data
-		curPos := 0
-
-		readSegs := 0
-		// Read all the opus frames from the segment table
-		for _, seg := range page.SegTbl {
-			packetBuf.Write(page.Data[curPos : curPos+int(seg)])
-			curPos += int(seg)
-			readSegs++
-
-			// Min size of an opus packet is 1 byte, can't be smaller
-			if seg < 255 && packetBuf.Len() > 0 {
-
-				// segment length is less than 255, end of packet
-				err = e.writeOpusFrame(packetBuf.Bytes())
-				if err != nil {
-					logln("Error writing opus frame:", err)
-					break
-				}
-				packetBuf.Reset()
-			}
-		}
-	}
-	if packetBuf.Len() > 0 {
-		err := e.writeOpusFrame(packetBuf.Bytes())
+		err = e.writeOpusFrame(packet)
 		if err != nil {
 			logln("Error writing opus frame:", err)
+			break
 		}
 	}
 }

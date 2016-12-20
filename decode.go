@@ -15,9 +15,10 @@ var (
 )
 
 type Decoder struct {
+	r *bufio.Reader
+
 	Metadata      *Metadata
 	FormatVersion int
-	r             *bufio.Reader
 
 	// Set to true after the first frame has been read
 	firstFrameProcessed bool
