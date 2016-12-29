@@ -226,10 +226,13 @@ func (e *encodeSession) run() {
 	e.process = ffmpeg.Process
 	e.Unlock()
 
-	go e.readStderr(stderr)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go e.readStderr(stderr, &wg)
 
 	defer close(e.frameChannel)
 	e.readStdout(stdout)
+	wg.Wait()
 	err = ffmpeg.Wait()
 	if err != nil {
 		if err.Error() != "signal: killed" {
@@ -379,7 +382,9 @@ func (e *encodeSession) writeMetadataFrame() {
 	e.frameChannel <- buf.Bytes()
 }
 
-func (e *encodeSession) readStderr(stderr io.ReadCloser) {
+func (e *encodeSession) readStderr(stderr io.ReadCloser, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	bufReader := bufio.NewReader(stderr)
 	outBuf := ""
 	for {
