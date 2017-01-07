@@ -1,8 +1,8 @@
 dca
 ====
-`dca` is an audio file format that uses opus packets and json metadata.
+`dca` is a audio file format that uses opus packets and json metadata.
 
-This package implements a decoder, encoder and a helepr streamer for dca v0 and v1.
+This package implements a decoder, encoder and a helper streamer for dca v0 and v1.
 
 [Docs on GoDoc](https://godoc.org/github.com/jonas747/dca)
 
