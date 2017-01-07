@@ -5,7 +5,10 @@ import (
 )
 
 func TestEncode(t *testing.T) {
-	session := EncodeFile("testaudio.ogg", StdEncodeOptions)
+	session, err := EncodeFile("testaudio.ogg", StdEncodeOptions)
+	if err != nil {
+		t.Fatal("Failed creating encoding session", err)
+	}
 
 	numFrames := 0
 	for {

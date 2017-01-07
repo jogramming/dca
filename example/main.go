@@ -106,7 +106,11 @@ func PlayAudioFile(v *discordgo.VoiceConnection, filename string) {
 	opts.RawOutput = true
 	opts.Bitrate = 120
 
-	encodeSession := dca.EncodeFile(filename, opts)
+	encodeSession, err := dca.EncodeFile(filename, opts)
+	if err != nil {
+		log.Fatal("Failed creating an encoding session: ", err)
+	}
+
 	done := make(chan error)
 	stream := dca.NewStream(encodeSession, v, done)
 

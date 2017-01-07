@@ -44,6 +44,10 @@ type EncodeOptions struct {
 	BufferedFrames   int              // How big the frame buffer should be
 	VBR              bool             // Wether vbr is used or not (variable bitrate)
 
+	// The ffmpeg audio filters to use, see https://ffmpeg.org/ffmpeg-filters.html#Audio-Filters for more info
+	// Leave empty to use no filters.
+	AudioFilter string
+
 	Comment string // Leave a comment in the metadata
 }
 
@@ -64,6 +68,14 @@ func (opts *EncodeOptions) Validate() error {
 
 	if opts.PacketLoss < 0 || opts.PacketLoss > 100 {
 		return errors.New("Invalid packet loss percentage")
+	}
+
+	if opts.Application != AudioApplicationAudio && opts.Application != AudioApplicationVoip && opts.Application != AudioApplicationLowDelay {
+		return errors.New("Invalid audio application")
+	}
+
+	if opts.CompressionLevel < 0 || opts.CompressionLevel > 10 {
+		return errors.New("Compression level out of bounds (0-10)")
 	}
 
 	return nil
@@ -112,25 +124,35 @@ type EncodeSession struct {
 }
 
 // EncodedMem encodes data from memory
-func EncodeMem(r io.Reader, options *EncodeOptions) (session *EncodeSession) {
-	s := &EncodeSession{
+func EncodeMem(r io.Reader, options *EncodeOptions) (session *EncodeSession, err error) {
+	err = options.Validate()
+	if err != nil {
+		return
+	}
+
+	session = &EncodeSession{
 		options:      options,
 		pipeReader:   r,
 		frameChannel: make(chan []byte, options.BufferedFrames),
 	}
-	go s.run()
-	return s
+	go session.run()
+	return
 }
 
 // EncodeFile encodes the file/url/other in path
-func EncodeFile(path string, options *EncodeOptions) (session *EncodeSession) {
-	s := &EncodeSession{
+func EncodeFile(path string, options *EncodeOptions) (session *EncodeSession, err error) {
+	err = options.Validate()
+	if err != nil {
+		return
+	}
+
+	session = &EncodeSession{
 		options:      options,
 		filePath:     path,
 		frameChannel: make(chan []byte, options.BufferedFrames),
 	}
-	go s.run()
-	return s
+	go session.run()
+	return
 }
 
 func (e *EncodeSession) run() {
@@ -159,10 +181,30 @@ func (e *EncodeSession) run() {
 	}
 
 	// Launch ffmpeg with a variety of different fruits and goodies mixed togheter
-	ffmpeg := exec.Command("ffmpeg", "-stats", "-i", inFile, "-map", "0:a", "-acodec", "libopus", "-f", "ogg", "-vbr", vbrStr,
-		"-compression_level", strconv.Itoa(e.options.CompressionLevel), "-vol", strconv.Itoa(e.options.Volume), "-ar", strconv.Itoa(e.options.FrameRate),
-		"-ac", strconv.Itoa(e.options.Channels), "-b:a", strconv.Itoa(e.options.Bitrate*1000), "-application", string(e.options.Application),
-		"-frame_duration", strconv.Itoa(e.options.FrameDuration), "-packet_loss", strconv.Itoa(e.options.PacketLoss), "pipe:1")
+	args := []string{
+		"-stats",
+		"-i", inFile,
+		"-map", "0:a",
+		"-acodec", "libopus",
+		"-f", "ogg",
+		"-vbr", vbrStr,
+		"-compression_level", strconv.Itoa(e.options.CompressionLevel),
+		"-vol", strconv.Itoa(e.options.Volume),
+		"-ar", strconv.Itoa(e.options.FrameRate),
+		"-ac", strconv.Itoa(e.options.Channels),
+		"-b:a", strconv.Itoa(e.options.Bitrate * 1000),
+		"-application", string(e.options.Application),
+		"-frame_duration", strconv.Itoa(e.options.FrameDuration),
+		"-packet_loss", strconv.Itoa(e.options.PacketLoss),
+	}
+
+	if e.options.AudioFilter != "" {
+		args = append(args, "af", e.options.AudioFilter)
+	}
+
+	args = append(args, "pipe:1")
+
+	ffmpeg := exec.Command("ffmpeg", args...)
 
 	// logln(ffmpeg.Args)
 
