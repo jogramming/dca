@@ -47,7 +47,8 @@ type EncodeOptions struct {
 	Comment string // Leave a comment in the metadata
 }
 
-func (e EncodeOptions) PCMFrameLen() int { // DCA needs this
+func (e EncodeOptions) PCMFrameLen() int {
+	// DCA needs this
 	return 960 * e.Channels * (e.FrameDuration / 20)
 }
 
@@ -82,29 +83,6 @@ var StdEncodeOptions = &EncodeOptions{
 	VBR:              true,
 }
 
-// EncodeSession is an encoding session
-type EncodeSession interface {
-	io.Reader
-	OpusReader
-
-	Stop() error                          // Stops the encoding session
-	ReadFrame() (frame []byte, err error) // Retrieves a dca frame
-	Running() bool                        // Wether its encoding or not
-	Options() *EncodeOptions              // Returns the encodeoptions for this session
-
-	// Returns ffmpeg stats, NOTE: this is not playback stats but transcode stats.
-	// To get how far into playback you are
-	// you have to track the number of frames sent to discord youself
-	Stats() *EncodeStats
-
-	// Truncate will throw away all unread frames and kill ffmpeg. call this to make sure there
-	// will be no leaks, you don't want ffmpeg processes to start piling up on your system
-	Truncate()
-
-	// Error() Returns any errors that occured
-	Error() error
-}
-
 // EncodeStats is transcode stats reported by ffmpeg
 type EncodeStats struct {
 	Size     int
@@ -113,7 +91,7 @@ type EncodeStats struct {
 	Speed    float32
 }
 
-type encodeSession struct {
+type EncodeSession struct {
 	sync.Mutex
 	options    *EncodeOptions
 	pipeReader io.Reader
@@ -134,8 +112,8 @@ type encodeSession struct {
 }
 
 // EncodedMem encodes data from memory
-func EncodeMem(r io.Reader, options *EncodeOptions) (session EncodeSession) {
-	s := &encodeSession{
+func EncodeMem(r io.Reader, options *EncodeOptions) (session *EncodeSession) {
+	s := &EncodeSession{
 		options:      options,
 		pipeReader:   r,
 		frameChannel: make(chan []byte, options.BufferedFrames),
@@ -145,8 +123,8 @@ func EncodeMem(r io.Reader, options *EncodeOptions) (session EncodeSession) {
 }
 
 // EncodeFile encodes the file/url/other in path
-func EncodeFile(path string, options *EncodeOptions) (session EncodeSession) {
-	s := &encodeSession{
+func EncodeFile(path string, options *EncodeOptions) (session *EncodeSession) {
+	s := &EncodeSession{
 		options:      options,
 		filePath:     path,
 		frameChannel: make(chan []byte, options.BufferedFrames),
@@ -155,7 +133,7 @@ func EncodeFile(path string, options *EncodeOptions) (session EncodeSession) {
 	return s
 }
 
-func (e *encodeSession) run() {
+func (e *EncodeSession) run() {
 	// Reset running state
 	defer func() {
 		e.Lock()
@@ -243,7 +221,7 @@ func (e *encodeSession) run() {
 	}
 }
 
-func (e *encodeSession) writeMetadataFrame() {
+func (e *EncodeSession) writeMetadataFrame() {
 	// Setup the metadata
 	metadata := Metadata{
 		Dca: &DCAMetadata{
@@ -382,7 +360,7 @@ func (e *encodeSession) writeMetadataFrame() {
 	e.frameChannel <- buf.Bytes()
 }
 
-func (e *encodeSession) readStderr(stderr io.ReadCloser, wg *sync.WaitGroup) {
+func (e *EncodeSession) readStderr(stderr io.ReadCloser, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	bufReader := bufio.NewReader(stderr)
@@ -407,7 +385,7 @@ func (e *encodeSession) readStderr(stderr io.ReadCloser, wg *sync.WaitGroup) {
 	}
 }
 
-func (e *encodeSession) handleStderrLine(line string) {
+func (e *EncodeSession) handleStderrLine(line string) {
 	if strings.Index(line, "size=") != 0 {
 		return // Not stats info
 	}
@@ -442,7 +420,7 @@ func (e *encodeSession) handleStderrLine(line string) {
 	e.Unlock()
 }
 
-func (e *encodeSession) readStdout(stdout io.ReadCloser) {
+func (e *EncodeSession) readStdout(stdout io.ReadCloser) {
 	decoder := ogg.NewPacketDecoder(ogg.NewDecoder(stdout))
 
 	for {
@@ -463,7 +441,7 @@ func (e *encodeSession) readStdout(stdout io.ReadCloser) {
 	}
 }
 
-func (e *encodeSession) writeOpusFrame(opusFrame []byte) error {
+func (e *EncodeSession) writeOpusFrame(opusFrame []byte) error {
 	var dcaBuf bytes.Buffer
 
 	err := binary.Write(&dcaBuf, binary.LittleEndian, int16(len(opusFrame)))
@@ -485,10 +463,8 @@ func (e *encodeSession) writeOpusFrame(opusFrame []byte) error {
 	return nil
 }
 
-// Implement the EncodeSession interface
-
-// Stop Stops the encoding session
-func (e *encodeSession) Stop() error {
+// Stop stops the encoding session
+func (e *EncodeSession) Stop() error {
 	e.Lock()
 	defer e.Unlock()
 	if !e.running || e.process == nil {
@@ -499,9 +475,9 @@ func (e *encodeSession) Stop() error {
 	return err
 }
 
-// ReadFrame blocks untill a frame is read or there are no more frames
+// ReadFrame blocks until a frame is read or there are no more frames
 // Note: If rawoutput is not set, the first frame will be a metadata frame
-func (e *encodeSession) ReadFrame() (frame []byte, err error) {
+func (e *EncodeSession) ReadFrame() (frame []byte, err error) {
 	frame = <-e.frameChannel
 	if frame == nil {
 		return nil, io.EOF
@@ -510,19 +486,23 @@ func (e *encodeSession) ReadFrame() (frame []byte, err error) {
 	return frame, nil
 }
 
-func (e *encodeSession) OpusFrame() (frame []byte, err error) {
+// OpusFrame implements OpusReader, returning the next opus frame
+func (e *EncodeSession) OpusFrame() (frame []byte, err error) {
 	return DecodeFrame(e)
 }
 
-// Running return true if running
-func (e *encodeSession) Running() (running bool) {
+// Running returns true if running
+func (e *EncodeSession) Running() (running bool) {
 	e.Lock()
 	running = e.running
 	e.Unlock()
 	return
 }
 
-func (e *encodeSession) Stats() *EncodeStats {
+// Stats returns ffmpeg stats, NOTE: this is not playback stats but transcode stats.
+// To get how far into playback you are
+// you have to track the number of frames sent to discord youself
+func (e *EncodeSession) Stats() *EncodeStats {
 	s := &EncodeStats{}
 	e.Lock()
 	if e.lastStats != nil {
@@ -533,11 +513,21 @@ func (e *encodeSession) Stats() *EncodeStats {
 	return s
 }
 
-func (e *encodeSession) Options() *EncodeOptions {
+// Options returns the options used
+func (e *EncodeSession) Options() *EncodeOptions {
 	return e.options
 }
 
-func (e *encodeSession) Truncate() {
+// Truncate is deprecated, use Cleanup instead
+// this will be removed in a future version
+func (e *EncodeSession) Truncate() {
+	e.Cleanup()
+}
+
+// Cleanup cleans up the encoding session, throwring away all unread frames and stopping ffmpeg
+// ensuring that no ffmpeg processes starts piling up on your system
+// You should always call this after it's done
+func (e *EncodeSession) Cleanup() {
 	e.Stop()
 
 	for _ = range e.frameChannel {
@@ -546,8 +536,9 @@ func (e *encodeSession) Truncate() {
 	}
 }
 
-// implement io.Reader
-func (e *encodeSession) Read(p []byte) (n int, err error) {
+// Read implements io.Reader,
+// n == len(p) if err == nil, otherwise n contains the number bytes read before an error occured
+func (e *EncodeSession) Read(p []byte) (n int, err error) {
 	if e.buf.Len() >= len(p) {
 		return e.buf.Read(p)
 	}
@@ -563,11 +554,13 @@ func (e *encodeSession) Read(p []byte) (n int, err error) {
 	return e.buf.Read(p)
 }
 
-func (e *encodeSession) FrameDuration() int {
-	return e.options.FrameDuration
+// FrameDuration implements OpusReader, retruning the duratio of each frame
+func (e *EncodeSession) FrameDuration() time.Duration {
+	return time.Duration(e.options.FrameDuration) * time.Millisecond
 }
 
-func (e *encodeSession) Error() error {
+// Error returns any error that occured during the encoding process
+func (e *EncodeSession) Error() error {
 	e.Lock()
 	defer e.Unlock()
 	return e.err

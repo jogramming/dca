@@ -119,7 +119,7 @@ func main() {
 	// BLOCK : Start reader and writer workers
 	//////////////////////////////////////////////////////////////////////////
 
-	var session dca.EncodeSession
+	var session *dca.EncodeSession
 	options := &dca.EncodeOptions{
 		Volume:        Volume,
 		Channels:      Channels,
@@ -154,7 +154,7 @@ func main() {
 	}
 }
 
-func statusPrinter(session dca.EncodeSession) {
+func statusPrinter(session *dca.EncodeSession) {
 	ticker := time.NewTicker(time.Millisecond * 500)
 	for {
 		<-ticker.C

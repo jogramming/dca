@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"strconv"
+	"time"
 )
 
 var (
@@ -101,12 +102,12 @@ func (d *Decoder) OpusFrame() (frame []byte, err error) {
 	return
 }
 
-func (d *Decoder) FrameDuration() int {
+func (d *Decoder) FrameDuration() time.Duration {
 	if d.Metadata == nil {
 		return 20
 	}
 
 	// I don't understand nick, why does it have to be like this nick, please nick, im not having a good time nick.
 	// 960B = pcm framesize of 20ms 1 channel audio
-	return ((d.Metadata.Opus.FrameSize / d.Metadata.Opus.Channels) / 960) * 20
+	return time.Duration(((d.Metadata.Opus.FrameSize/d.Metadata.Opus.Channels)/960)*20) * time.Millisecond
 }

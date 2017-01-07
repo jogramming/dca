@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 	"log"
+	"time"
 )
 
 // Define constants
@@ -12,7 +13,7 @@ const (
 	FormatVersion int8 = 1
 
 	// The current version of the DCA program
-	LibraryVersion string = "0.0.3"
+	LibraryVersion string = "0.0.4"
 
 	// The URL to the GitHub repository of DCA
 	GitHubRepositoryURL string = "https://github.com/jonas747/dca"
@@ -20,7 +21,7 @@ const (
 
 type OpusReader interface {
 	OpusFrame() (frame []byte, err error)
-	FrameDuration() int
+	FrameDuration() time.Duration
 }
 
 var Logger *log.Logger
