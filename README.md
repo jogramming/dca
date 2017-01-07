@@ -1,26 +1,70 @@
-# welcome t' me fork ye yellow bellied scoundrel
-
 dca
 ====
 `dca` is an audio file format that uses opus packets and json metadata.
 
-This repository hosts the official specification draft for `dca` along with
-an example implementation in Google Go.
+This package implements a decoder, encoder and a helepr streamer for dca v0 and v1.
 
-There are also other implementations of the dca specification listed  below
-which may be better than the example provided in this repository.
+[Docs on GoDoc](https://godoc.org/github.com/jonas747/dca)
 
-Currently, the **dca-rs** implementation provides the best performance and is 
-probably the best version to use.
+There's also a standalone command you can use [here](https://github.com/jonas747/dca/tree/master/cmd/dca)
+
+Usage
+===
+Encoding
+```go
+
+// Encoding a file and saving it to disk
+encodeSession := dca.EncodeFile("path/to/file.mp3", dca.StdEncodeOptions)
+// Make sure everything is cleaned up, that for example the encoding process if any issues happened isnt lingering around
+defer encodeSession.CleanUp()
+
+output, err := os.Create("output.dca")
+if err != nil {
+    // Handle the error
+}
+
+io.Copy(output, encodeSession)
+```
+
+Decoding, the decoder automatically detects  dca version aswell as if metadata was available
+```go
+// inputReader is an io.Reader, like a file for example
+decoder := dca.NewDecoder(inputReader)
+
+for {
+    frame, err := decoder.OpusFrame()
+    if err != nil {
+        if err != io.EOF {
+            // Handle the error
+        }
+        
+        break
+    }
+    
+    // Do something with the frame, in this example were sending it to discord
+    select{
+        case voiceConnection.OpusSend <- frame:
+        case <-time.After(time.Second):
+            // We haven't been able to send a frame in a second, assume the connection is borked
+            return
+    }
+}
+
+```
+
+Using the helper streamer, the streamer creates a pausable stream to discord.
+```go
+
+// Source is an OpusReader, both EncodeSession and decoder implements opusreader
+done := make(chan error)
+streamer := dca.NewStreamer(source, voiceConnection, done)
+err := <- done
+if err != nil && err != io.EOF {
+    // Handle the error
+}
+
+```
 
 ### Official Specifications
-* [DCA1 specification draft](https://github.com/bwmarrin/dca/wiki/DCA1-specification-draft)
-
-### Reference implementations
-* [Google Go dca Command](https://github.com/bwmarrin/dca/tree/master/cmd/dca)
-* Google Go Package coming eventually :)
-
-### 3rd Party implementations
-* [dca-rs](https://github.com/nstafie/dca-rs) - Rust implementation of the DCA1 format.
-* [dCa](https://github.com/uppfinnarn/dca) - C implementation of the DCA0 format
-
+* [DCA Repo](https://github.com/bwmarrin/dca)
+* [DCA1 specification draft](https://github.com/bwmarrin/dca/wiki/DCA1-specification-draft
