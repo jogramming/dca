@@ -159,7 +159,7 @@ func (s *StreamingSession) SetPaused(paused bool) {
 // PlaybackPosition returns the the duration of content we have transmitted so far
 func (s *StreamingSession) PlaybackPosition() time.Duration {
 	s.Lock()
-	dur := time.Duration(s.framesSent*s.source.FrameDuration()) * time.Millisecond
+	dur := time.Duration(s.framesSent) * s.source.FrameDuration()
 	s.Unlock()
 	return dur
 }

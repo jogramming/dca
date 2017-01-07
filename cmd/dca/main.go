@@ -119,7 +119,6 @@ func main() {
 	// BLOCK : Start reader and writer workers
 	//////////////////////////////////////////////////////////////////////////
 
-	var session dca.EncodeSession
 	options := &dca.EncodeOptions{
 		Volume:        Volume,
 		Channels:      Channels,
@@ -133,12 +132,18 @@ func main() {
 		Comment:       Comment,
 	}
 
+	var session *dca.EncodeSession
 	var output = os.Stdout
 
 	if InFile == "pipe:0" {
-		session = dca.EncodeMem(os.Stdin, options)
+		session, err = dca.EncodeMem(os.Stdin, options)
 	} else {
-		session = dca.EncodeFile(InFile, options)
+		session, err = dca.EncodeFile(InFile, options)
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed creating an encoding session: ", err)
+		os.Exit(1)
 	}
 
 	if !Quiet {
@@ -154,7 +159,7 @@ func main() {
 	}
 }
 
-func statusPrinter(session dca.EncodeSession) {
+func statusPrinter(session *dca.EncodeSession) {
 	ticker := time.NewTicker(time.Millisecond * 500)
 	for {
 		<-ticker.C
