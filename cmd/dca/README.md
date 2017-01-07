@@ -1,8 +1,7 @@
-dca  [![Go report](http://goreportcard.com/badge/bwmarrin/dca)](http://goreportcard.com/report/bwmarrin/dca) [![Build Status](https://travis-ci.org/bwmarrin/discordgo.svg?branch=master)](https://travis-ci.org/bwmarrin/dca)
+dca  
 ====
 
-dca is a command line tool that wraps ffmpeg to create opus audio data suitable
-for use with the [Discord](https://discordapp.com/) chat software.
+This is a command line tool for creating DCA files
 
 If you are developing a library for use with Discord you can use this program
 as a way to generate the opus audio data from any standard audio file.
@@ -36,7 +35,6 @@ Provided by Uniquoooo
 ```
 # basics
 sudo apt-get update
-sudo apt-get install golang git gcc make pkg-config --yes
 # golang
 mkdir $HOME/go
 echo 'export GOPATH=$HOME/go' >> ~/.bashrc
@@ -46,45 +44,20 @@ source ~/.bashrc
 sudo add-apt-repository ppa:kirillshkrogalev/ffmpeg-next
 sudo apt-get update
 sudo apt-get install ffmpeg --yes
-# opus
-wget http://downloads.xiph.org/releases/opus/opus-1.1.2.tar.gz
-tar -zxvf opus-1.1.2.tar.gz
-cd opus-1.1.2
-./configure
-make && sudo make install
-cd ../
-rm -r opus-1.1.2 opus-1.1.2.tar.gz
 # install dca
-go get github.com/bwmarrin/dca
+go get github.com/jonas747/dca/cmd/dca
 ```
 
-Note: If Go complains that GOPATH is not defined, try run `source ~/.bashrc` and then `go get github.com/bwmarrin/dca`.
+Note: If Go complains that GOPATH is not defined, try run `source ~/.bashrc` and then `go get github.com/jonas747/dca/cmd/dca`.
 
 ### Windows
 
-Provided by Axiom :) -- Very ROUGH DRAFT
-
 ```
 Install Go for Windows
+Install ffmpeg
 Setup gopath to some empty folder (for example, I made mine C:\gopath)
-Install winbuilds (http://win-builds.org/doku.php) (handles our external dependencies for us including 64bit gcc needed to compile)
-Inside of winbuilds, install gcc, its dependencies, and opus (might be under libopus). If you're really unsure, just hit process in the top right which will install everything.
-Open cmd and cd into dca repository directory
-Run go build
-???
-Profit!
-```
-
-### Windows (Pacman)
-
-Provided by iopred.
-First, install msys2 then install pacman
-
-```
-$ pacman -S mingw64/mingw-w64-x86_64-pkg-config
-$ pacman -S mingw64/mingw-w64-x86_64-opusfile
-$ go get github.com/bwmarrin/dca
-$ go install github.com/bwmarrin/dca
+go get github.com/jonas747/dca/cmd/dca
+dca should now be built in %GOPATH%/bin
 ```
 
 ### OS X
@@ -94,8 +67,8 @@ Provided by Uniquoooo
 This way uses Homebrew, download it from [here.](http://brew.sh/)
 
 ```
-$ brew install ffmpeg opus golang
-$ go get github.com/bwmarrin/dca
+$ brew install ffmpeg golang
+$ go get github.com/jonas747/dca/cmd/dca
 ```
 
 
@@ -121,7 +94,7 @@ Usage of ./dca:
         change audio volume (256=normal) (default 256)
 ```
 
-You may also pass pipe pcm16 audio into dca instead of providing an input file.
+You may also pipe audio audio into dca instead of providing an input file.
 
 
 ## Examples
@@ -140,23 +113,3 @@ happen.  In other words, probably not worth your time right now :)
 See [this chart](https://abal.moe/Discord/Libraries.html) for a feature 
 comparison and list of other Discord API libraries.
 
-## File Structure
-
-Here is the structure of a DCA file header:
-
-```
-| 0 | 1 | 2 |         3        |  4  |  5  |  6  |  7  | 8 - JSON Size |
-|---|---|---|------------------|-----------------------|---------------|
-|    DCA    |  Version Number  |       JSON Size       | JSON Metadata |
-|  Magic Header with Version   |      signed int32     |               |
-```
-
-Here is the structure of A DCA frame:
-
-```
-| 0 | 1 | 2 - Frame Size |
-|---|---|----------------|
-| Frame |  Opus encoded  |
-| Size  |      data      |
-| int16 |                |
-```
