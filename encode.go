@@ -199,7 +199,8 @@ func (e *EncodeSession) run() {
 	}
 
 	if e.options.AudioFilter != "" {
-		args = append(args, "af", e.options.AudioFilter)
+		// Lit af
+		args = append(args, "-af", e.options.AudioFilter)
 	}
 
 	args = append(args, "pipe:1")
