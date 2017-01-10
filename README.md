@@ -67,4 +67,4 @@ if err != nil && err != io.EOF {
 
 ### Official Specifications
 * [DCA Repo](https://github.com/bwmarrin/dca)
-* [DCA1 specification draft](https://github.com/bwmarrin/dca/wiki/DCA1-specification-draft
+* [DCA1 specification draft](https://github.com/bwmarrin/dca/wiki/DCA1-specification-draft)
