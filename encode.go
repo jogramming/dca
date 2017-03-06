@@ -29,6 +29,10 @@ var (
 	AudioApplicationLowDelay AudioApplication = "lowdelay" // Restrict to only the lowest delay modes.
 )
 
+var (
+	ErrBadFrame = errors.New("Bad Frame")
+)
+
 // EncodeOptions is a set of options for encoding dca
 type EncodeOptions struct {
 	Volume           int              // change audio volume (256=normal)
@@ -103,6 +107,11 @@ type EncodeStats struct {
 	Speed    float32
 }
 
+type Frame struct {
+	data     []byte
+	metaData bool
+}
+
 type EncodeSession struct {
 	sync.Mutex
 	options    *EncodeOptions
@@ -111,7 +120,7 @@ type EncodeSession struct {
 
 	running      bool
 	started      time.Time
-	frameChannel chan []byte
+	frameChannel chan *Frame
 	process      *os.Process
 	lastStats    *EncodeStats
 
@@ -133,7 +142,7 @@ func EncodeMem(r io.Reader, options *EncodeOptions) (session *EncodeSession, err
 	session = &EncodeSession{
 		options:      options,
 		pipeReader:   r,
-		frameChannel: make(chan []byte, options.BufferedFrames),
+		frameChannel: make(chan *Frame, options.BufferedFrames),
 	}
 	go session.run()
 	return
@@ -149,7 +158,7 @@ func EncodeFile(path string, options *EncodeOptions) (session *EncodeSession, er
 	session = &EncodeSession{
 		options:      options,
 		filePath:     path,
-		frameChannel: make(chan []byte, options.BufferedFrames),
+		frameChannel: make(chan *Frame, options.BufferedFrames),
 	}
 	go session.run()
 	return
@@ -378,7 +387,6 @@ func (e *EncodeSession) writeMetadataFrame() {
 		metadata.Origin = &OriginMetadata{
 			Source:   "pipe",
 			Channels: e.options.Channels,
-			Encoding: "pcm16/s16le",
 		}
 	}
 
@@ -400,7 +408,7 @@ func (e *EncodeSession) writeMetadataFrame() {
 	}
 
 	buf.Write(jsonData)
-	e.frameChannel <- buf.Bytes()
+	e.frameChannel <- &Frame{buf.Bytes(), true}
 }
 
 func (e *EncodeSession) readStderr(stderr io.ReadCloser, wg *sync.WaitGroup) {
@@ -497,7 +505,7 @@ func (e *EncodeSession) writeOpusFrame(opusFrame []byte) error {
 		return err
 	}
 
-	e.frameChannel <- dcaBuf.Bytes()
+	e.frameChannel <- &Frame{dcaBuf.Bytes(), false}
 
 	e.Lock()
 	e.lastFrame++
@@ -521,17 +529,31 @@ func (e *EncodeSession) Stop() error {
 // ReadFrame blocks until a frame is read or there are no more frames
 // Note: If rawoutput is not set, the first frame will be a metadata frame
 func (e *EncodeSession) ReadFrame() (frame []byte, err error) {
-	frame = <-e.frameChannel
-	if frame == nil {
+	f := <-e.frameChannel
+	if f == nil {
 		return nil, io.EOF
 	}
 
-	return frame, nil
+	return f.data, nil
 }
 
 // OpusFrame implements OpusReader, returning the next opus frame
 func (e *EncodeSession) OpusFrame() (frame []byte, err error) {
-	return DecodeFrame(e)
+	f := <-e.frameChannel
+	if f == nil {
+		return nil, io.EOF
+	}
+
+	if f.metaData {
+		// Return the next one then...
+		return e.OpusFrame()
+	}
+
+	if len(f.data) < 2 {
+		return nil, ErrBadFrame
+	}
+
+	return f.data[2:], nil
 }
 
 // Running returns true if running
