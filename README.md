@@ -16,7 +16,7 @@ Encoding
 // Encoding a file and saving it to disk
 encodeSession := dca.EncodeFile("path/to/file.mp3", dca.StdEncodeOptions)
 // Make sure everything is cleaned up, that for example the encoding process if any issues happened isnt lingering around
-defer encodeSession.CleanUp()
+defer encodeSession.Cleanup()
 
 output, err := os.Create("output.dca")
 if err != nil {
