@@ -474,9 +474,15 @@ func (e *EncodeSession) handleStderrLine(line string) {
 func (e *EncodeSession) readStdout(stdout io.ReadCloser) {
 	decoder := ogg.NewPacketDecoder(ogg.NewDecoder(stdout))
 
+	// the first 2 packets are ogg opus metadata
+	skipPackets := 2
 	for {
 		// Retrieve a packet
 		packet, _, err := decoder.Decode()
+		if skipPackets > 0 {
+			skipPackets--
+			continue
+		}
 		if err != nil {
 			if err != io.EOF {
 				logln("Error reading fmmpeg stdout:", err)
