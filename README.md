@@ -52,7 +52,7 @@ for {
 
 ```
 
-Using the helper streamer, the streamer creates a pausable stream to discord.
+Using the helper streamer, the streamer creates a pausable stream to Discord.
 ```go
 
 // Source is an OpusReader, both EncodeSession and decoder implements opusreader
@@ -63,6 +63,39 @@ if err != nil && err != io.EOF {
     // Handle the error
 }
 
+```
+
+Using this [youtube-dl](https://www.github.com/rylio/ytdl) Go package, one can stream music to Discord from Youtube
+```go
+// Change these accordingly
+options := dca.StdEncodeOptions
+options.RawOutput = true
+options.Bitrate = 96
+options.Application = "lowdelay"
+
+videoInfo, err := ytdl.GetVideoInfo(videoURL)
+if err != nil {
+    // Handle the error
+}
+
+format := videoInfo.Formats.Extremes(ytdl.FormatAudioBitrateKey, true)[0]
+downloadURL, err := videoInfo.GetDownloadURL(format)
+if err != nil {
+    // Handle the error
+}
+
+encodingSession, err := dca.EncodeFile(downloadURL.String(), options)
+if err != nil {
+    // Handle the error
+}
+defer encodingSession.Cleanup()
+    
+done := make(chan error)    
+dca.NewStream(encodingSession, voiceConnection, done)
+err := <- done
+if err != nil && err != io.EOF {
+    // Handle the error
+}
 ```
 
 ### Official Specifications
