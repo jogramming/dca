@@ -132,6 +132,8 @@ type EncodeSession struct {
 	lastFrame int
 	err       error
 
+	ffmpegOutput string
+
 	// buffer that stores unread bytes (not full frames)
 	// used to implement io.Reader
 	buf bytes.Buffer
@@ -421,7 +423,7 @@ func (e *EncodeSession) readStderr(stderr io.ReadCloser, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	bufReader := bufio.NewReader(stderr)
-	outBuf := ""
+	var outBuf bytes.Buffer
 	for {
 		r, _, err := bufReader.ReadRune()
 		if err != nil {
@@ -431,13 +433,22 @@ func (e *EncodeSession) readStderr(stderr io.ReadCloser, wg *sync.WaitGroup) {
 			break
 		}
 
-		if r == '\n' || r == '\r' {
-			if len(outBuf) > 0 {
-				e.handleStderrLine(outBuf)
-				outBuf = ""
+		// Is this the best way to distinguish stats from messages?
+		switch r {
+		case '\r':
+			// Stats line
+			if outBuf.Len() > 0 {
+				e.handleStderrLine(outBuf.String())
+				outBuf.Reset()
 			}
-		} else {
-			outBuf += string(r)
+		case '\n':
+			// Message
+			e.Lock()
+			e.ffmpegOutput += outBuf.String() + "\n"
+			e.Unlock()
+			outBuf.Reset()
+		default:
+			outBuf.WriteRune(r)
 		}
 	}
 }
@@ -641,4 +652,12 @@ func (e *EncodeSession) Error() error {
 	e.Lock()
 	defer e.Unlock()
 	return e.err
+}
+
+// FFMPEGMessages returns messages printed by ffmpeg to stderr, you can use this to see what ffmpeg is saying if your encoding fails
+func (e *EncodeSession) FFMPEGMessages() string {
+	e.Lock()
+	output := e.ffmpegOutput
+	e.Unlock()
+	return output
 }

@@ -157,6 +157,7 @@ func main() {
 		os.Exit(1)
 	} else if !Quiet {
 		fmt.Fprintf(os.Stderr, "\nFinished encoding\n")
+		fmt.Fprint(os.Stderr, "ffmpeg output\n\n", session.FFMPEGMessages())
 	}
 }
 
