@@ -90,11 +90,8 @@ func main() {
 
 	// If reading from a file, verify it exists.
 	if InFile != "pipe:0" {
-
 		if _, err := os.Stat(InFile); os.IsNotExist(err) {
-			fmt.Println("error: infile does not exist")
-			flag.Usage()
-			return
+			fmt.Fprintln(os.Stderr, "warning: infile does not exist as a file on this system, will still continue on incase this is something else that ffmpeg accepts")
 		}
 	}
 
@@ -108,7 +105,7 @@ func main() {
 
 		if (fi.Mode() & os.ModeCharDevice) == 0 {
 		} else {
-			fmt.Println("error: stdin is not a pipe.")
+			fmt.Fprintln(os.Stderr, "error: stdin is not a pipe.")
 			flag.Usage()
 			return
 		}
