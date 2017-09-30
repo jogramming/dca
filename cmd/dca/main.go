@@ -39,6 +39,8 @@ var (
 
 	Volume int // change audio volume (256=normal)
 
+	Threads int // change number of threads to use, 0 for auto
+
 	Comment string // Comment left in the metadata
 
 	//OpusEncoder *gopus.Encoder
@@ -62,6 +64,7 @@ func init() {
 	flag.IntVar(&FrameRate, "ar", 48000, "audio sampling rate")
 	flag.IntVar(&FrameDuration, "as", 20, "audio frame duration can be 20, 40, or 60 (ms)")
 	flag.IntVar(&Bitrate, "ab", 128, "audio encoding bitrate in kb/s can be 8 - 128")
+	flag.IntVar(&Threads, "threads", 0, "number of threads to use, 0 for auto")
 	flag.BoolVar(&VBR, "vbr", true, "variable bitrate")
 	flag.BoolVar(&RawOutput, "raw", false, "Raw opus output (no metadata or magic bytes)")
 	flag.StringVar(&Application, "aa", "audio", "audio application can be voip, audio, or lowdelay")
@@ -130,6 +133,7 @@ func main() {
 		CoverFormat:   CoverFormat,
 		VBR:           VBR,
 		Comment:       Comment,
+		Threads:       Threads,
 	}
 
 	var session *dca.EncodeSession

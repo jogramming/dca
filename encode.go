@@ -47,6 +47,7 @@ type EncodeOptions struct {
 	CompressionLevel int              // Compression level, higher is better qualiy but slower encoding (0 - 10)
 	BufferedFrames   int              // How big the frame buffer should be
 	VBR              bool             // Wether vbr is used or not (variable bitrate)
+	Threads          int              // Number of threads to use, 0 for auto
 
 	// The ffmpeg audio filters to use, see https://ffmpeg.org/ffmpeg-filters.html#Audio-Filters for more info
 	// Leave empty to use no filters.
@@ -80,6 +81,10 @@ func (opts *EncodeOptions) Validate() error {
 
 	if opts.CompressionLevel < 0 || opts.CompressionLevel > 10 {
 		return errors.New("Compression level out of bounds (0-10)")
+	}
+
+	if opts.Threads < 0 {
+		return errors.New("Number of threads can't be less than 0")
 	}
 
 	return nil
@@ -205,6 +210,7 @@ func (e *EncodeSession) run() {
 		"-application", string(e.options.Application),
 		"-frame_duration", strconv.Itoa(e.options.FrameDuration),
 		"-packet_loss", strconv.Itoa(e.options.PacketLoss),
+		"-threads", strconv.Itoa(e.options.Threads),
 	}
 
 	if e.options.AudioFilter != "" {
