@@ -67,7 +67,8 @@ Provided by Uniquoooo
 This way uses Homebrew, download it from [here.](http://brew.sh/)
 
 ```
-$ brew install ffmpeg golang
+$ brew install ffmpeg --with-opus
+$ brew install golang
 $ go get github.com/jonas747/dca/cmd/dca
 ```
 
