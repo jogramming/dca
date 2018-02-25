@@ -59,7 +59,7 @@ func DecodeFrame(r io.Reader) (frame []byte, err error) {
 	}
 
 	if size < 0 {
-		return
+		return nil, ErrNegativeFrameSize
 	}
 
 	frame = make([]byte, size)
