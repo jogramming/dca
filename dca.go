@@ -2,6 +2,7 @@ package dca
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"log"
 	"time"
@@ -45,11 +46,19 @@ func logf(format string, a ...interface{}) {
 	log.Printf(format, a...)
 }
 
+var (
+	ErrNegativeFrameSize = errors.New("Frame size is negative, possibly corrupted.")
+)
+
 // DecodeFrame decodes a dca frame from an io.Reader and returns the raw opus audio ready to be sent to discord
 func DecodeFrame(r io.Reader) (frame []byte, err error) {
 	var size int16
 	err = binary.Read(r, binary.LittleEndian, &size)
 	if err != nil {
+		return
+	}
+
+	if size < 0 {
 		return
 	}
 
