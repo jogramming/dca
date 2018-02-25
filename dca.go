@@ -14,7 +14,7 @@ const (
 	FormatVersion int8 = 1
 
 	// The current version of the DCA program
-	LibraryVersion string = "0.0.4"
+	LibraryVersion string = "0.0.5"
 
 	// The URL to the GitHub repository of DCA
 	GitHubRepositoryURL string = "https://github.com/jonas747/dca"
