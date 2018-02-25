@@ -42,8 +42,7 @@ func (d *Decoder) ReadMetadata() error {
 	}
 	d.firstFrameProcessed = true
 
-	fingerprint := make([]byte, 4)
-	_, err := d.r.Read(fingerprint)
+	fingerprint, err := d.r.Peek(4)
 	if err != nil {
 		return err
 	}
@@ -51,6 +50,9 @@ func (d *Decoder) ReadMetadata() error {
 	if string(fingerprint[:3]) != "DCA" {
 		return ErrNotDCA
 	}
+
+	// We just peeked earlier, mark this portion as read
+	d.r.Discard(4)
 
 	// Read the format version
 	version, err := strconv.ParseInt(string(fingerprint[3:]), 10, 32)
