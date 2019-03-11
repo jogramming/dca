@@ -502,7 +502,7 @@ func (e *EncodeSession) readStdout(stdout io.ReadCloser) {
 		}
 		if err != nil {
 			if err != io.EOF {
-				logln("Error reading fmmpeg stdout:", err)
+				logln("Error reading ffmpeg stdout:", err)
 			}
 			break
 		}
