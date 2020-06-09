@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jonas747/ogg"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -18,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jonas747/ogg"
 )
 
 // AudioApplication is an application profile for opus encoding
@@ -198,12 +199,12 @@ func (e *EncodeSession) run() {
 
 	// Launch ffmpeg with a variety of different fruits and goodies mixed togheter
 	args := []string{
+		"-stats",
+		"-i", inFile,
 		"-reconnect", "1",
 		"-reconnect_at_eof", "1",
 		"-reconnect_streamed", "1",
 		"-reconnect_delay_max", "2",
-		"-stats",
-		"-i", inFile,
 		"-map", "0:a",
 		"-acodec", "libopus",
 		"-f", "ogg",
