@@ -49,6 +49,7 @@ type EncodeOptions struct {
 	BufferedFrames   int              // How big the frame buffer should be
 	VBR              bool             // Wether vbr is used or not (variable bitrate)
 	Threads          int              // Number of threads to use, 0 for auto
+	StartTime        int              // Start Time of the input stream in seconds
 
 	// The ffmpeg audio filters to use, see https://ffmpeg.org/ffmpeg-filters.html#Audio-Filters for more info
 	// Leave empty to use no filters.
@@ -103,6 +104,7 @@ var StdEncodeOptions = &EncodeOptions{
 	PacketLoss:       1,
 	BufferedFrames:   100, // At 20ms frames that's 2s
 	VBR:              true,
+	StartTime:        0,
 }
 
 // EncodeStats is transcode stats reported by ffmpeg
@@ -218,6 +220,7 @@ func (e *EncodeSession) run() {
 		"-frame_duration", strconv.Itoa(e.options.FrameDuration),
 		"-packet_loss", strconv.Itoa(e.options.PacketLoss),
 		"-threads", strconv.Itoa(e.options.Threads),
+		"-ss", strconv.Itoa(e.options.StartTime),
 	}
 
 	if e.options.AudioFilter != "" {
