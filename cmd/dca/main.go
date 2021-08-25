@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/jonas747/dca"
 	"io"
 	"os"
 	"time"
+
+	"github.com/jonas747/dca/v2"
 )
 
 // All global variables used within the program
