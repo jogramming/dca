@@ -202,11 +202,11 @@ func (e *EncodeSession) run() {
 	// Launch ffmpeg with a variety of different fruits and goodies mixed togheter
 	args := []string{
 		"-stats",
-		"-i", inFile,
 		"-reconnect", "1",
 		"-reconnect_at_eof", "1",
 		"-reconnect_streamed", "1",
 		"-reconnect_delay_max", "2",
+		"-i", inFile,
 		"-map", "0:a",
 		"-acodec", "libopus",
 		"-f", "ogg",
