@@ -107,8 +107,8 @@ func (s *StreamingSession) readNext() error {
 	case <-timeOut.C:
 		return ErrVoiceConnClosed
 	case s.vc.OpusSend <- opus:
+		timeOut.Stop()
 	}
-	timeOut.Stop()
 
 	s.Lock()
 	s.framesSent++
