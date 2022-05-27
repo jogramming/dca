@@ -64,12 +64,12 @@ dca should now be built in %GOPATH%/bin
 
 Provided by Uniquoooo
 
-This way uses Homebrew, download it from [here.](http://brew.sh/)
+This way uses Homebrew, download it from [here.](https://brew.sh/)
 
-```
-$ brew install ffmpeg --with-opus
-$ brew install golang
-$ go get github.com/jonas747/dca/cmd/dca
+```bash
+brew install ffmpeg
+brew install golang
+go install github.com/jonas747/dca/cmd/dca@latest
 ```
 
 
