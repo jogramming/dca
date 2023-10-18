@@ -65,9 +65,6 @@ func (e EncodeOptions) PCMFrameLen() int {
 
 // Validate returns an error if the options are not correct
 func (opts *EncodeOptions) Validate() error {
-	if opts.Volume < 0 || opts.Volume > 512 {
-		return errors.New("Out of bounds volume (0-512)")
-	}
 
 	if opts.FrameDuration != 20 && opts.FrameDuration != 40 && opts.FrameDuration != 60 {
 		return errors.New("Invalid FrameDuration")
@@ -212,7 +209,6 @@ func (e *EncodeSession) run() {
 		"-f", "ogg",
 		"-vbr", vbrStr,
 		"-compression_level", strconv.Itoa(e.options.CompressionLevel),
-		"-vol", strconv.Itoa(e.options.Volume),
 		"-ar", strconv.Itoa(e.options.FrameRate),
 		"-ac", strconv.Itoa(e.options.Channels),
 		"-b:a", strconv.Itoa(e.options.Bitrate * 1000),
@@ -477,7 +473,7 @@ func (e *EncodeSession) handleStderrLine(line string) {
 
 	_, err := fmt.Sscanf(line, "size=%dkB time=%d:%d:%f bitrate=%fkbits/s speed=%fx", &size, &timeH, &timeM, &timeS, &bitrate, &speed)
 	if err != nil {
-		logln("Error parsing ffmpeg stats:", err)
+		//logln("Error parsing ffmpeg stats:", err)
 	}
 
 	dur := time.Duration(timeH) * time.Hour
