@@ -1,3 +1,6 @@
+**This is a fork to fix some errors**
+====
+
 dca [![Go report](http://goreportcard.com/badge/jonas747/dca)](http://goreportcard.com/report/jonas747/dca) [![Build Status](https://travis-ci.org/jonas747/dca.svg?branch=master)](https://travis-ci.org/jonas747/dca)
 ====
 `dca` is a audio file format that uses opus packets and json metadata.
