@@ -462,27 +462,52 @@ func (e *EncodeSession) readStderr(stderr io.ReadCloser, wg *sync.WaitGroup) {
 }
 
 func (e *EncodeSession) handleStderrLine(line string) {
-	if strings.Index(line, "size=") != 0 {
+	if !strings.HasPrefix(line, "size=") {
 		return // Not stats info
 	}
 
 	var size int
+	var timeStr string
+	var bitrateStr string
+	var speedStr string
 
-	var timeH int
-	var timeM int
-	var timeS float32
-
-	var bitrate float32
-	var speed float32
-
-	_, err := fmt.Sscanf(line, "size=%dkB time=%d:%d:%f bitrate=%fkbits/s speed=%fx", &size, &timeH, &timeM, &timeS, &bitrate, &speed)
+	_, err := fmt.Sscanf(line, "size=%dkB time=%s bitrate=%s speed=%s", &size, &timeStr, &bitrateStr, &speedStr)
 	if err != nil {
 		logln("Error parsing ffmpeg stats:", err)
+		return
 	}
 
-	dur := time.Duration(timeH) * time.Hour
-	dur += time.Duration(timeM) * time.Minute
-	dur += time.Duration(timeS) * time.Second
+	// Parse time
+	var dur time.Duration
+	if timeStr != "N/A" {
+		timeComponents := strings.Split(timeStr, ":")
+		if len(timeComponents) == 3 {
+			hours, _ := strconv.Atoi(timeComponents[0])
+			minutes, _ := strconv.Atoi(timeComponents[1])
+			seconds, _ := strconv.ParseFloat(timeComponents[2], 64)
+			dur = time.Duration(hours)*time.Hour +
+				time.Duration(minutes)*time.Minute +
+				time.Duration(seconds*float64(time.Second))
+		}
+	}
+
+	// Parse bitrate
+	var bitrate float32
+	if bitrateStr != "N/A" {
+		bitrateFloat, err := strconv.ParseFloat(strings.TrimSuffix(bitrateStr, "kbits/s"), 32)
+		if err == nil {
+			bitrate = float32(bitrateFloat)
+		}
+	}
+
+	// Parse speed
+	var speed float32
+	if speedStr != "N/A" {
+		speedFloat, err := strconv.ParseFloat(strings.TrimSuffix(speedStr, "x"), 32)
+		if err == nil {
+			speed = float32(speedFloat)
+		}
+	}
 
 	stats := &EncodeStats{
 		Size:     size,
